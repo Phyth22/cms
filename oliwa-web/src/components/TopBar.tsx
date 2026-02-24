@@ -6,52 +6,85 @@
  */
 import React from "react";
 
+// ── Pill variant map ────────────────────────────────────────────────────────
+const pillVariant: Record<string, string> = {
+  teal:  "bg-[#128C7E] text-white",
+  azure: "bg-[#34B7F1] text-white",
+  green: "bg-[#25D366] text-white",
+};
+
 interface TopBarProps {
-  /** Brand / product name shown in the header. */
-  brandName?: string;
-  /** Page-level title appended after the brand name. */
-  pageTitle?: string;
-  /** Placeholder text for the global search field. */
+  brandName?:        string;
+  pageTitle?:        string;
   searchPlaceholder?: string;
-  /** RBAC role chips to display (e.g. ["SYSADMIN", "can-spend"]). */
-  roles?: { label: string; variant: "teal" | "azure" | "green" }[];
-  /** Single initial shown inside the avatar circle. */
-  avatarInitial?: string;
-  /** Short identity string shown next to the avatar. */
-  whoLabel?: string;
+  roles?:            { label: string; variant: "teal" | "azure" | "green" }[];
+  avatarInitial?:    string;
+  whoLabel?:         string;
 }
 
 export function TopBar({
-  brandName = "NAVAS v26",
-  pageTitle = "NOC Bridge — System Health CMS",
+  brandName         = "NAVAS v26",
+  pageTitle         = "NOC Bridge — System Health CMS",
   searchPlaceholder = "Search tenants, units, tokens, incidents…",
   roles = [
-    { label: "SYSADMIN", variant: "teal" },
+    { label: "SYSADMIN",  variant: "teal" },
     { label: "can-spend", variant: "azure" },
   ],
   avatarInitial = "T",
-  whoLabel = "Tim • Kampala",
+  whoLabel      = "Tim • Kampala",
 }: TopBarProps) {
   return (
-    <header className="topbar">
-      <div className="brand">
-        <span className="brandName">{brandName}</span>
-        <span className="dot">•</span>
-        <span className="pageTitle">{pageTitle}</span>
+    <header className="
+      h-12 flex items-center gap-3 px-4
+      bg-[#075E54] text-white
+      sticky top-0 z-[100] shrink-0
+    ">
+      {/* Brand */}
+      <div className="flex items-center gap-2 shrink-0">
+        <span className="font-bold opacity-90 whitespace-nowrap">{brandName}</span>
+        <span className="opacity-70">•</span>
+        <span className="font-bold whitespace-nowrap hidden sm:inline">{pageTitle}</span>
       </div>
 
-      <div className="search">
-        <input placeholder={searchPlaceholder} />
+      {/* Search */}
+      <div className="flex-1 min-w-0 max-w-xl hidden xs:block">
+        <input
+          placeholder={searchPlaceholder}
+          className="
+            w-full h-[30px] rounded-full border-none
+            px-4 text-[13px] outline-none
+            bg-white/15 text-white placeholder-white/60
+            focus:bg-white/25 transition-colors
+          "
+        />
       </div>
 
-      <div className="rbac">
+      {/* RBAC / user */}
+      <div className="flex items-center gap-2 ml-auto shrink-0">
         {roles.map((r) => (
-          <span key={r.label} className={`pill ${r.variant}`}>
+          <span
+            key={r.label}
+            className={`
+              hidden sm:inline-flex items-center
+              rounded-full px-2.5 py-1 text-[11px] font-extrabold whitespace-nowrap
+              ${pillVariant[r.variant]}
+            `}
+          >
             {r.label}
           </span>
         ))}
-        <div className="avatar">{avatarInitial}</div>
-        <div className="who">{whoLabel}</div>
+
+        {/* Avatar */}
+        <div className="
+          w-[30px] h-[30px] rounded-full bg-[#0B7B6E]
+          grid place-items-center font-bold text-sm shrink-0
+        ">
+          {avatarInitial}
+        </div>
+
+        <span className="hidden sm:block text-xs opacity-90 whitespace-nowrap">
+          {whoLabel}
+        </span>
       </div>
     </header>
   );

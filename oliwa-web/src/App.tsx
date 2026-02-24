@@ -1,17 +1,4 @@
-/**
- * SystemHealthNocBridge — Root composition
- *
- * Wires together the five independent layout components:
- *
- *   1. TopBar        — primary navigation bar
- *   2. StatusStrip   — secondary navigation / status bar
- *   3. NavRail       — primary side navigation
- *   4. Sidebar       — secondary side navigation
- *   5. Dashboard     — main workspace blades
- */
 import React from "react";
-import "./SystemHealthNocBridge.css";
-
 import { TopBar }      from "./components/TopBar";
 import { StatusStrip } from "./components/StatusStrip";
 import { NavRail }     from "./components/NavRail";
@@ -20,26 +7,19 @@ import { Dashboard }   from "./components/Dashboard";
 
 export default function SystemHealthNocBridge() {
   return (
-    <div className="nvas-root">
-      {/* 1. Primary navigation bar */}
-      <TopBar />
+    <div className="min-h-screen min-h-dvh flex flex-col bg-[#F0F2F5] pb-14 md:pb-0 overflow-x-hidden w-full">
 
-      {/* 2. Secondary navigation bar */}
+      <TopBar />
       <StatusStrip />
 
-      <div className="body">
-        {/* 3. Primary side navigation */}
+      <div className="flex flex-1 min-h-0 min-w-0 overflow-x-hidden">
         <NavRail />
-
-        {/* 4. Secondary side navigation */}
         <Sidebar />
-
-        {/* 5. Dashboard (main workspace) */}
         <Dashboard />
       </div>
 
-      <footer className="footer">
-        Kafka lag 4.8s • Redis p95 3ms • Cassandra p95 27ms • SSE clients 2.1k • Uptime 99.82%
+      <footer className="hidden md:flex items-center h-[22px] bg-white border-t border-[#E9EDEF] px-3 text-[11px] text-[#667781] overflow-x-auto whitespace-nowrap shrink-0" style={{ scrollbarWidth: "none" }}>
+        Kafka lag 4.8s&nbsp;•&nbsp;Redis p95 3ms&nbsp;•&nbsp;Cassandra p95 27ms&nbsp;•&nbsp;SSE clients 2.1k&nbsp;•&nbsp;Uptime 99.82%
       </footer>
     </div>
   );

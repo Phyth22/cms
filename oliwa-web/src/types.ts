@@ -10,8 +10,8 @@ export type HitlAction = {
 };
 
 export const sevLabel: Record<Severity, string> = {
-  green: "Active",
-  warning: "Warning",
-  alarm: "Alarm",
+  green:    "Active",
+  warning:  "Warning",
+  alarm:    "Alarm",
   critical: "Critical",
 };
