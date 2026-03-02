@@ -1,0 +1,1 @@
+export { FirmwarePage } from "./FirmwarePage";

@@ -1,0 +1,645 @@
+/**
+ * AegisDashboard — Screen 01: AEGIS Command Centre (Ops + Biz Dashboard)
+ *
+ * Matches all 7 screenshots pixel-accurately.
+ *
+ * ── Existing reused components ──────────────────────────────────────────────
+ *   NavRail              → primary side icon rail (desktop vertical / mobile bottom tabs)
+ *   AccordionSidebar     → grouped collapsible module navigation (left sidebar)
+ *   OpsKpiCard           → 3-column KPI cards (top grid: active units, token burn, payments)
+ *   WaswaAIPanel         → right-side AI panel (persistent in layout, hidden on mobile)
+ *   HITLApprovalTable    → HITL approvals queue table (bottom section)
+ *
+ * ── New components built for this screen ───────────────────────────────────
+ *   AegisTopBar          → unique top bar: tenant selector, wallet, burn, live ticker, Waswa toggle
+ *   AegisStatusStrip     → secondary context strip below top bar
+ *   TaskManagerTable     → system health live task manager (CPU/RAM/restarts/lag/status)
+ *   PaymentGatewaysCard  → Mobile Money + ePayment gateways health
+ *   TokenEngineCard      → Token Engine dual economy card
+ *   VebaGovernanceTable  → VEBA marketplace governance / leakage prevention table
+ *   AuditTrailCard       → Audit-grade trail (irrefutable) with timestamped entries
+ *   WaswaDrawer          → floating slide-in Waswa AI chat drawer
+ *   TokenTopupModal      → Top-up tokens via MoMo + ePayment (rebuilt to match screenshot)
+ *
+ * ── Airlock modal overlay ───────────────────────────────────────────────────
+ *   Per screenshots 1+2: the login/MFA form renders as a centred modal over the
+ *   blurred dashboard — NOT as a separate full-page route.
+ *   AirlockModal is an inline component below.
+ */
+import React, { useState, useEffect } from "react";
+
+// ── Existing shared components ───────────────────────────────────────────────
+import { NavRail }           from "../../components/navigation";
+import { AccordionSidebar }  from "../../components/navigation";
+import { WaswaAIPanel }      from "../../components/waswa";
+import type { ApprovalRow }  from "./components/HITLApprovalTable";
+import { HITLApprovalTable } from "./components/HITLApprovalTable";
+
+// ── New components ───────────────────────────────────────────────────────────
+import { AegisTopBar }           from "./components/AegisTopBar";
+import { AegisStatusStrip }      from "./components/AegisStatusStrip";
+import { TaskManagerTable }      from "./components/TaskManagerTable";
+import { PaymentGatewaysCard }   from "./components/PaymentGatewaysCard";
+import { TokenEngineCard }       from "./components/TokenEngineCard";
+import { VebaGovernanceTable }   from "./components/VebaGovernanceTable";
+import { AuditTrailCard }        from "./components/AuditTrailCard";
+import { WaswaDrawer }           from "../../components/waswa";
+import { TokenTopupModal }       from "../tokens/components/TokenTopupModal";
+
+// ── Auth ─────────────────────────────────────────────────────────────────────
+import { useAuth } from "../../auth/AuthContext";
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Static data
+// ─────────────────────────────────────────────────────────────────────────────
+
+const AEGIS_TICKER = [
+  "Forecast: Healthy",
+  "API 99.95%",
+  "Kafka lag 12s",
+  "Redis 97%",
+];
+
+const AEGIS_NAV_ITEMS = [
+  { key: "home",     glyph: "⌂",  label: "Home",         path: "/"         },
+  { key: "health",   glyph: "♥",  label: "Health",       path: "/health"   },
+  { key: "alarms",   glyph: "!",  label: "Alarms",       path: "/alarms"   },
+  { key: "tokens",   glyph: "T",  label: "Tokens",       path: "/tokens"   },
+  { key: "billing",  glyph: "$",  label: "Billing",      path: "/billing"  },
+  { key: "veba",     glyph: "V",  label: "VEBA",         path: "/veba"     },
+  { key: "waswa",    glyph: "W",  label: "Waswa AI",     path: "/ai"       },
+  { key: "rbac",     glyph: "R",  label: "RBAC",         path: "/rbac"     },
+  { key: "settings", glyph: "⚙",  label: "Settings",     path: "/audit"    },
+  { key: "mobile",   glyph: "📱", label: "Mobile",       path: "/payments" },
+];
+
+const AEGIS_SIDEBAR_GROUPS = [
+  {
+    id: "cmd",
+    title: "Command & Control",
+    icon: "⌂",
+    items: [
+      { id: "login",   label: "Login & SSO",        path: "/airlock" },
+      { id: "ops",     label: "Ops + Biz Dash",     path: "/aegis"   },
+      { id: "syshealth",label:"System Health CMS",  path: "/health"  },
+      { id: "alarms",  label: "Alarm Center",       path: "/alarms"  },
+      { id: "ai",      label: "AI Console",         path: "/ai"      },
+      { id: "logout",  label: "Logout Trail",       path: "/audit"   },
+    ],
+  },
+  {
+    id: "tokenomics",
+    title: "Tokenomics & Revenue",
+    icon: "₳",
+    items: [
+      { id: "tokens",   label: "Token Engine",       path: "/tokens"   },
+      { id: "payments", label: "Payments Gateways",  path: "/payments" },
+      { id: "billing",  label: "Billing",            path: "/billing"  },
+    ],
+  },
+  {
+    id: "infra",
+    title: "Infrastructure & Connectivity",
+    icon: "⚙",
+    items: [
+      { id: "kafka", label: "Kafka / Queues", path: "/health" },
+      { id: "redis", label: "Redis / Cache",  path: "/health" },
+      { id: "dbs",   label: "Databases",     path: "/health" },
+    ],
+  },
+  {
+    id: "asset",
+    title: "Asset & Resource Governance",
+    icon: "V",
+    items: [
+      { id: "veba-gov",   label: "VEBA Governance",  path: "/veba"  },
+      { id: "veba-books", label: "VEBA Bookings Ops",path: "/veba"  },
+    ],
+  },
+  {
+    id: "telem",
+    title: "Telematics & GIS Ops",
+    icon: "📡",
+    items: [
+      { id: "gis",  label: "GIS Live Intelligence", path: "/veba"  },
+      { id: "track",label: "Fleet Tracking",        path: "/veba"  },
+    ],
+  },
+  {
+    id: "veba-mkt",
+    title: "VEBA Marketplace",
+    icon: "🏪",
+    items: [
+      { id: "veba-mkt-home", label: "Rental Ops",  path: "/veba" },
+      { id: "leakage",       label: "Leakage Ops", path: "/veba" },
+    ],
+  },
+  {
+    id: "utility",
+    title: "Utility & Support",
+    icon: "?",
+    items: [
+      { id: "ecosystem", label: "The Ecosystem", path: "/audit" },
+      { id: "rbac",      label: "RBAC",          path: "/rbac"  },
+      { id: "audit",     label: "Audit Trail",   path: "/audit" },
+    ],
+  },
+];
+
+const HITL_ROWS: ApprovalRow[] = [
+  { id: "h1", time: "09:14", action: "Price rule change (OLIWA-PLUS) — +10%",   state: "Pending",  actor: "Waswa AI"    },
+  { id: "h2", time: "09:02", action: "Refund > UGX 2,000,000 — INV-8841",       state: "Pending",  actor: "Billing Bot" },
+  { id: "h3", time: "08:51", action: "VEBA dispute payout hold — BK-1192",      state: "Pending",  actor: "Waswa AI"    },
+  { id: "h4", time: "08:40", action: "Data export (10k rows) — Reports",         state: "Approved", actor: "Admin SA"    },
+  { id: "h5", time: "08:22", action: "AI model deploy (Waswa-SLM v2.6)",         state: "Pending",  actor: "Waswa AI"    },
+];
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Page
+// ─────────────────────────────────────────────────────────────────────────────
+
+export function AegisDashboard() {
+  const { state }              = useAuth();
+  const [topupOpen,      setTopupOpen]      = useState(false);
+  const [waswaOn,        setWaswaOn]        = useState(true);
+  const [waswaDrawerOpen,setWaswaDrawerOpen]= useState(false);
+  // Show Airlock modal if not authenticated
+  const [airlockOpen,    setAirlockOpen]    = useState(state.status !== "authenticated");
+
+  return (
+    <div className="min-h-screen min-h-dvh flex flex-col bg-[#F0F2F5] pb-14 md:pb-0 overflow-x-hidden w-full">
+
+      {/* 1. Aegis Top Bar */}
+      <AegisTopBar
+        waswaOn={waswaOn}
+        onToggleWaswa={() => setWaswaOn((v) => !v)}
+        onOpenTopup={() => setTopupOpen(true)}
+        tickerItems={AEGIS_TICKER}
+      />
+
+      {/* 2. Aegis Status Strip */}
+      <AegisStatusStrip
+        waswaOn={waswaOn}
+        onToggleWaswa={() => setWaswaOn((v) => !v)}
+        onOpenTopup={() => setTopupOpen(true)}
+      />
+
+      <div className="flex flex-1 min-h-0 min-w-0 overflow-x-hidden">
+
+        {/* 3. Primary side nav */}
+        <NavRail items={AEGIS_NAV_ITEMS} />
+
+        {/* 4. Accordion sidebar */}
+        <AccordionSidebar
+          title="NAVIGATION"
+          groups={AEGIS_SIDEBAR_GROUPS}
+          defaultOpen="cmd"
+        />
+
+        {/* 5. Main workspace */}
+        <main className="flex-1 min-w-0 overflow-y-auto overflow-x-hidden flex flex-col gap-3 p-3">
+
+          {/* Page heading */}
+          <div className="bg-white border border-[#E9EDEF] rounded-xl px-4 py-3 flex flex-wrap items-start gap-3">
+            <div className="min-w-0 flex-1">
+              <nav className="text-[11px] text-[#667781] mb-1">
+                Home &rsaquo; Ops + Biz Dash &rsaquo; AEGIS Overview
+              </nav>
+              <div className="font-black text-[16px] text-[#111B21]">
+                Ops + Biz Dashboard — Strategic Overseer
+              </div>
+              <div className="text-[11px] text-[#667781] mt-0.5">
+                Live: Kafka→Redis→SSE (≤3s). All high-risk actions require HITL/HIC approval + audit.
+              </div>
+            </div>
+            <div className="flex gap-2 flex-wrap ml-auto shrink-0">
+              <ActionPill color="green">+ New…</ActionPill>
+              <ActionPill color="azure">Open Approvals</ActionPill>
+              <ActionPill color="ghost">⋮</ActionPill>
+            </div>
+          </div>
+
+          {/* KPI grid — 3 large cards matching screenshot */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+            <BigKpiCard
+              label="Active units online"
+              value="48,120 / 52,300"
+              delta="+0.6% vs 1h"
+              deltaColor="green"
+            />
+            <BigKpiCard
+              label="Token burn (all tenants)"
+              value="2.4 T/s"
+              delta="+12% spike"
+              deltaColor="green"
+            />
+            <BigKpiCard
+              label="Payments success (24h)"
+              value="96.8%"
+              delta="-1.2%"
+              deltaColor="red"
+            />
+          </div>
+
+          {/* Second KPI row */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
+            <BigKpiCard label="VEBA bookings (today)"  value="1,284"  delta="+8.4%"  deltaColor="green" />
+            <BigKpiCard label="Leakage prevented"       value="342"    delta="±0%"    deltaColor="muted"  />
+            <BigKpiCard label="P1 alerts open"          value="7"      delta="+2"     deltaColor="green"  />
+          </div>
+
+          {/* Waswa AI + HITL queue row */}
+          <div className="grid grid-cols-1 xl:grid-cols-[1fr_320px] gap-3">
+
+            {/* Waswa AI insights card */}
+            <div className="bg-white border border-[#E9EDEF] rounded-xl overflow-hidden">
+              <div className="px-4 py-3 border-b border-[#E9EDEF] flex flex-wrap items-center gap-3">
+                <div className="font-black text-[13px] text-[#111B21]">
+                  Waswa AI Co‑Pilot — HiC Insights (Today)
+                </div>
+                <span className="text-[10px] font-extrabold bg-[#128C7E] text-white px-2.5 py-1 rounded-full">
+                  AI ON
+                </span>
+                <span className="ml-auto text-[11px] text-[#667781]">
+                  Model: Cascade (Local→SLM→External)
+                </span>
+              </div>
+              <div className="px-4 py-2 text-[11px] text-[#667781]">
+                AI suggests; human approves. All decisions are cryptographically logged (Irrefutable).
+              </div>
+              <ul className="px-5 pb-4 text-[12px] text-[#111B21] leading-relaxed list-disc flex flex-col gap-1 marker:text-[#128C7E]">
+                <li>Detected revenue leakage pattern in VEBA: 'Boda' category — contact sharing attempts ↑ 2.1×</li>
+                <li>Token burn spike driver: Video retrieval (DASHCAM) + maps routing calls (↑ 18%)</li>
+                <li>Suggested action: Raise VEBA 'Lead Unlock' fee by +1.5 T (HITL approval required)</li>
+                <li>Suggested action: Enable Smart Caps: 80% soft alert, 95% hard lock (per tenant)</li>
+              </ul>
+            </div>
+
+            {/* HITL queue card */}
+            <div className="bg-white border border-[#E9EDEF] rounded-xl overflow-hidden flex flex-col">
+              <div className="px-4 py-3 border-b border-[#E9EDEF] flex items-center justify-between">
+                <div>
+                  <div className="font-black text-[13px] text-[#111B21]">HITL/HIC Approvals Queue</div>
+                  <div className="text-[11px] text-[#667781] mt-0.5">High-risk actions awaiting review</div>
+                </div>
+                <span className="text-[10px] font-extrabold bg-[#FFF8E1] border border-[#FFE08A] text-[#7A5E00] px-2 py-0.5 rounded-full whitespace-nowrap">
+                  7 pending
+                </span>
+              </div>
+              <ol className="px-5 py-3 text-[12px] text-[#111B21] leading-relaxed list-decimal flex flex-col gap-1.5 marker:text-[#667781]">
+                <li>Price rule change (OLIWA‑PLUS) — +10%</li>
+                <li>Refund &gt; UGX 2,000,000 — INV‑8841</li>
+                <li>VEBA dispute payout hold — BK‑1192</li>
+                <li>Data export (10k rows) — Reports</li>
+                <li>AI model deploy (Waswa‑SLM v2.6)</li>
+              </ol>
+            </div>
+          </div>
+
+          {/* Task manager table */}
+          <TaskManagerTable />
+
+          {/* Payments + Token Engine side by side */}
+          <div className="grid grid-cols-1 xl:grid-cols-2 gap-3">
+            <PaymentGatewaysCard />
+            <TokenEngineCard onMint={() => setTopupOpen(true)} />
+          </div>
+
+          {/* VEBA Governance table */}
+          <VebaGovernanceTable />
+
+          {/* HITL Approvals Table — full data table */}
+          <HITLApprovalTable rows={HITL_ROWS} />
+
+          {/* Audit trail */}
+          <AuditTrailCard />
+
+          {/* System metrics footer */}
+          <div className="bg-white border border-[#E9EDEF] rounded-xl px-4 py-3">
+            <div className="text-[11px] text-[#667781]">
+              Kafka: 12s lag&nbsp;•&nbsp;Redis: 97% hit&nbsp;•&nbsp;Cassandra write p95 9ms&nbsp;•&nbsp;MoMo retries 41&nbsp;•&nbsp;UI refresh 30s
+            </div>
+          </div>
+        </main>
+
+        {/* 6. Waswa AI right panel (desktop) */}
+        <WaswaAIPanel />
+      </div>
+
+      {/* Floating Waswa W button */}
+      <button
+        onClick={() => setWaswaDrawerOpen(true)}
+        aria-label="Open Waswa AI"
+        className="
+          fixed right-5 bottom-20 z-[300] lg:bottom-5
+          w-14 h-14 rounded-full border-none
+          bg-[#25D366] text-white font-black text-[22px]
+          shadow-[0_12px_30px_rgba(0,0,0,0.18)]
+          cursor-pointer hover:brightness-105 active:scale-95 transition-all
+          grid place-items-center
+        "
+      >
+        W
+      </button>
+
+      {/* Modals + drawers */}
+      <TokenTopupModal open={topupOpen} onClose={() => setTopupOpen(false)} />
+      <WaswaDrawer
+        open={waswaDrawerOpen && waswaOn}
+        onClose={() => setWaswaDrawerOpen(false)}
+        waswaOn={waswaOn}
+        onToggleWaswa={() => setWaswaOn((v) => !v)}
+      />
+
+      {/* Airlock login modal overlay */}
+      <AirlockModal open={airlockOpen} onClose={() => setAirlockOpen(false)} />
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// BigKpiCard — large 2-line KPI card matching screenshot top grid
+// ─────────────────────────────────────────────────────────────────────────────
+
+function BigKpiCard({
+  label,
+  value,
+  delta,
+  deltaColor = "green",
+}: {
+  label:       string;
+  value:       string;
+  delta:       string;
+  deltaColor?: "green" | "red" | "muted";
+}) {
+  const deltaCls = {
+    green: "text-[#25D366]",
+    red:   "text-[#EF4444]",
+    muted: "text-[#667781]",
+  }[deltaColor];
+
+  return (
+    <div className="bg-white border border-[#E9EDEF] rounded-xl p-4 min-h-[90px] flex flex-col gap-1">
+      <div className="text-[11px] text-[#667781]">{label}</div>
+      <div className="text-[24px] font-black text-[#111B21] leading-tight">{value}</div>
+      <div className={`text-[12px] font-extrabold ${deltaCls}`}>{delta}</div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ActionPill — header action buttons
+// ─────────────────────────────────────────────────────────────────────────────
+
+const pillCls: Record<string, string> = {
+  green: "bg-[#25D366] text-[#075E54]",
+  azure: "bg-[#34B7F1] text-white",
+  ghost: "bg-white border border-[#E9EDEF] text-[#667781]",
+};
+
+function ActionPill({ color = "ghost", onClick, children }: { color?: string; onClick?: () => void; children: React.ReactNode }) {
+  return (
+    <button
+      onClick={onClick}
+      className={`h-8 px-4 rounded-full text-[12px] font-extrabold border-none cursor-pointer hover:brightness-105 active:opacity-85 transition-all whitespace-nowrap ${pillCls[color]}`}
+    >
+      {children}
+    </button>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// AirlockModal — login / MFA overlay matching screenshots 1 & 2
+// Renders over the blurred dashboard background
+// ─────────────────────────────────────────────────────────────────────────────
+
+function AirlockModal({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const { state, login, verifyMfa } = useAuth();
+
+  const [email,    setEmail]    = useState(state.loginHint?.email ?? "admin@3d-services.africa");
+  const [password, setPassword] = useState("••••••••••");
+  const [mfa,      setMfa]      = useState("371902");
+  const [busy,     setBusy]     = useState(false);
+  const [err,      setErr]      = useState<string | null>(null);
+
+  useEffect(() => {
+    if (state.status === "authenticated") { onClose(); }
+  }, [state.status]);
+
+  if (!open) return null;
+
+  const handleLogin = async () => {
+    setBusy(true); setErr(null);
+    try { await login(email, password); }
+    catch (e: unknown) { setErr(e instanceof Error ? e.message : "Login failed"); }
+    finally { setBusy(false); }
+  };
+
+  const handleVerify = async () => {
+    setBusy(true); setErr(null);
+    try { await verifyMfa(mfa); }
+    catch (e: unknown) { setErr(e instanceof Error ? e.message : "MFA failed"); }
+    finally { setBusy(false); }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[9998] flex items-start justify-center pt-[60px] px-4">
+      {/* Blurred backdrop */}
+      <div className="absolute inset-0 bg-white/10 backdrop-blur-[2px]" />
+
+      {/* Modal card */}
+      <div className="relative z-[1] w-full max-w-[560px] bg-white rounded-2xl border border-[#E9EDEF] shadow-[0_20px_60px_rgba(0,0,0,0.18)] overflow-hidden">
+
+        {/* Card header */}
+        <div className="px-6 pt-5 pb-4">
+          <div className="font-black text-[18px] text-[#111B21]">
+            Screen 01 — Airlock: Login &amp; Authentication
+          </div>
+          <div className="text-[12px] text-[#667781] mt-1">
+            System Admin access • MFA enforced • Irrefutable audit trail
+          </div>
+        </div>
+
+        <div className="px-6 pb-6 flex flex-col gap-4">
+          {/* Tenant context row */}
+          <div className="bg-[#F8F9FA] border border-[#E9EDEF] rounded-xl px-4 py-3 flex items-center justify-between">
+            <div>
+              <div className="text-[11px] text-[#667781]">Tenant context</div>
+              <div className="font-extrabold text-[13px] text-[#111B21] mt-0.5">
+                {state.tenant} ▾
+              </div>
+            </div>
+            <span className="text-[11px] font-extrabold bg-[#128C7E] text-white px-3 py-1 rounded-full">
+              RBAC: {state.role}
+            </span>
+          </div>
+
+          {/* Step 1: credentials */}
+          {state.status === "logged_out" && (
+            <>
+              <AirlockField label="Email / Username">
+                <AirlockInput
+                  type="email"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleLogin()}
+                  placeholder="admin@3d-services.africa"
+                />
+              </AirlockField>
+
+              <AirlockField label="Password">
+                <AirlockInput
+                  type="password"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleLogin()}
+                />
+              </AirlockField>
+
+              <div className="flex items-center justify-between">
+                <label className="flex items-center gap-2 text-[12px] text-[#667781] cursor-pointer">
+                  <input type="checkbox" defaultChecked className="accent-[#128C7E]" />
+                  Remember device (30 days)
+                </label>
+                <button className="text-[12px] font-extrabold text-[#34B7F1] bg-transparent border-none cursor-pointer hover:underline">
+                  Forgot password?
+                </button>
+              </div>
+
+              {err && <div className="text-[12px] font-extrabold text-[#EF4444]">{err}</div>}
+
+              <AirlockPrimaryBtn onClick={handleLogin} disabled={busy}>
+                {busy ? "Signing in…" : "Login →"}
+              </AirlockPrimaryBtn>
+
+              <div className="text-[11px] text-[#667781]">Or continue with</div>
+              <div className="grid grid-cols-3 gap-2.5">
+                {["Microsoft", "Google", "Okta"].map((p) => (
+                  <button
+                    key={p}
+                    className="h-11 rounded-xl border border-[#E9EDEF] bg-[#F8F9FA] text-[12px] font-extrabold text-[#111B21] cursor-pointer hover:bg-[#F0F2F5] transition-colors flex items-center justify-center gap-2"
+                  >
+                    {p}
+                    <span className="text-[10px] font-extrabold bg-[#128C7E] text-white px-1.5 py-0.5 rounded-full">SSO</span>
+                  </button>
+                ))}
+              </div>
+
+              {/* Security notice */}
+              <div className="bg-[#E8F5F2] border border-[#BFE7E0] rounded-xl px-4 py-3">
+                <div className="font-black text-[12px] text-[#128C7E]">Security</div>
+                <ul className="mt-1.5 text-[11px] text-[#128C7E] flex flex-col gap-1 list-disc pl-4">
+                  <li>MFA required for SYS_ADMIN</li>
+                  <li>Suspicious logins trigger step-up auth</li>
+                  <li>All actions audit-logged (Irrefutable)</li>
+                </ul>
+              </div>
+            </>
+          )}
+
+          {/* Step 2: MFA */}
+          {state.status === "mfa_required" && (
+            <>
+              <div>
+                <div className="font-extrabold text-[13px] text-[#111B21]">
+                  Step 2/2 — Multi‑Factor Authentication
+                </div>
+                <div className="text-[11px] text-[#667781] mt-1">
+                  We sent a one-time code to WhatsApp +256 *** **45 (fallback SMS).
+                </div>
+              </div>
+
+              <AirlockField label="Enter 6-digit code:">
+                <AirlockInput
+                  type="text"
+                  value={mfa}
+                  onChange={(e) => setMfa(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && handleVerify()}
+                  className="text-center tracking-[0.3em] font-black text-[18px]"
+                />
+              </AirlockField>
+
+              <div className="flex items-center justify-between">
+                <label className="flex items-center gap-2 text-[12px] text-[#667781] cursor-pointer">
+                  <input type="checkbox" defaultChecked className="accent-[#128C7E]" />
+                  Trust this device (admin policy: 30d)
+                </label>
+                <button className="text-[12px] font-extrabold text-[#34B7F1] bg-transparent border-none cursor-pointer hover:underline">
+                  Resend code
+                </button>
+              </div>
+
+              {err && <div className="text-[12px] font-extrabold text-[#EF4444]">{err}</div>}
+
+              <AirlockPrimaryBtn onClick={handleVerify} disabled={busy}>
+                {busy ? "Verifying…" : "Verify & Enter →"}
+              </AirlockPrimaryBtn>
+
+              {/* Login watchlist */}
+              <div className="bg-[#F8F9FA] border border-[#E9EDEF] rounded-xl overflow-hidden">
+                <div className="px-4 py-2.5 border-b border-[#E9EDEF]">
+                  <div className="font-extrabold text-[12px] text-[#111B21]">Login &amp; SSO Watchlist (last 15m)</div>
+                </div>
+                <div className="flex flex-col divide-y divide-[#E9EDEF]">
+                  {[
+                    { dot: "bg-[#25D366]", label: "Auth latency p95",       val: "1.6s"  },
+                    { dot: "bg-[#FBBF24]", label: "Failed logins",          val: "12/min"},
+                    { dot: "bg-[#25D366]", label: "MFA delivery failures",  val: "1.8%"  },
+                    { dot: "bg-[#FBBF24]", label: "Suspicious geo logins",  val: "2"     },
+                    { dot: "bg-[#25D366]", label: "Privilege elevation attempts", val: "0"},
+                  ].map((row, i) => (
+                    <div key={i} className="flex items-center gap-3 px-4 py-2">
+                      <span className={`w-2.5 h-2.5 rounded-full shrink-0 ${row.dot}`} />
+                      <span className="flex-1 text-[12px] text-[#111B21]">{row.label}</span>
+                      <span className="text-[12px] font-extrabold text-[#111B21]">{row.val}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* HIC note */}
+              <div className="bg-[#FFF8E1] border border-[#FFE08A] rounded-xl px-4 py-3">
+                <div className="font-extrabold text-[12px] text-[#7A5E00]">HIC note</div>
+                <div className="text-[12px] text-[#7A5E00] mt-1 leading-snug">
+                  High-risk actions (pricing, refunds, suspend, exports, kill-switch) require approval + audit trail.
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Airlock sub-components ───────────────────────────────────────────────────
+
+function AirlockField({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <label className="text-[11px] text-[#667781]">{label}</label>
+      {children}
+    </div>
+  );
+}
+
+function AirlockInput(props: React.InputHTMLAttributes<HTMLInputElement> & { className?: string }) {
+  return (
+    <input
+      {...props}
+      className={`h-11 w-full rounded-xl border border-[#E9EDEF] bg-white px-4 text-[13px] text-[#111B21] outline-none focus:border-[#128C7E] transition-colors ${props.className ?? ""}`}
+    />
+  );
+}
+
+function AirlockPrimaryBtn({ onClick, disabled, children }: { onClick?: () => void; disabled?: boolean; children: React.ReactNode }) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      className="w-full h-12 rounded-xl border-none bg-[#25D366] text-[#075E54] font-black text-[15px] cursor-pointer hover:brightness-105 active:opacity-85 transition-all disabled:opacity-50"
+    >
+      {children}
+    </button>
+  );
+}

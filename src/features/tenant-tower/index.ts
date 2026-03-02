@@ -1,0 +1,1 @@
+export { TenantTowerPage } from "./TenantTowePage";
