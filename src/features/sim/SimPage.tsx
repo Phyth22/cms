@@ -9,54 +9,50 @@
  *   BLADE:  SIM Details (Mapping Integrity, Actions HITL/HIC, Telemetry & Costs, Events)
  *   MODAL:  Link Telco Private APN (HITL) — 5-step wizard
  */
-import React, { useState } from "react";
+import React, { useState, useEffect, useMemo } from "react";
+import { getAllSimCards, getSimStatistics, ApiError } from "../../api";
+import type { SimCard, SimStatistics } from "../../api";
+import { CreateSimDialog } from "./components";
 
 // ─── Status badge styles ─────────────────────────────────────────────────────
-const stBadge: Record<string, string> = {
-  Active: "bg-[#25D366]/15 text-[#25D366] border border-[#25D366]/30",
-  Warn:   "bg-[#F97316]/15 text-[#F97316] border border-[#F97316]/30",
-  Alarm:  "bg-[#EF4444]/15 text-[#EF4444] border border-[#EF4444]/30",
-  OK:     "bg-[#25D366]/15 text-[#25D366] border border-[#25D366]/30",
-  WARN:   "bg-[#F97316]/15 text-[#F97316] border border-[#F97316]/30",
-  ALARM:  "bg-[#EF4444]/15 text-[#EF4444] border border-[#EF4444]/30",
-  PENDING:"text-[#F97316]", APPROVE:"text-[#25D366]", REVIEW:"text-[#F97316]",
+const STATUS_BADGE: Record<string, string> = {
+  "active":   "bg-[#25D366]/15 text-[#25D366] border border-[#25D366]/30",
+  "in-stock": "bg-[#F97316]/15 text-[#F97316] border border-[#F97316]/30",
+  "inactive": "bg-[#EF4444]/15 text-[#EF4444] border border-[#EF4444]/30",
+  "used":     "bg-[#F97316]/15 text-[#F97316] border border-[#F97316]/30",
+};
+
+const STATUS_DOT: Record<string, string> = {
+  "active":   "bg-[#25D366]",
+  "in-stock": "bg-[#F97316]",
+  "inactive": "bg-[#EF4444]",
+  "used":     "bg-[#F97316]",
 };
 
 // ─── Mock Data ───────────────────────────────────────────────────────────────
-const SIMS = [
-  { iccid:"89103000001234567​8", msisdn:"+256 770 100101", imei:"3568680523", telco:"MTN",    status:"Active", roam:"KE", mb:92,  rem:"11%",  rssi:"-109", cost:"UGX 4.1", dot:"bg-[#EF4444]" },
-  { iccid:"89103000001234568​9", msisdn:"+256 770 100102", imei:"3568680524", telco:"Airtel",  status:"Active", roam:"UG", mb:18,  rem:"62%",  rssi:"-93",  cost:"UGX 2.2", dot:"bg-[#25D366]" },
-  { iccid:"8910300000123456​90", msisdn:"+254 730 220331", imei:"3568680525", telco:"Saf",     status:"Warn",   roam:"KE", mb:66,  rem:"19%",  rssi:"-104", cost:"KES 0.8", dot:"bg-[#F97316]" },
-  { iccid:"89103000001234569​1", msisdn:"+256 750 340221", imei:"3568680526", telco:"Airtel",  status:"Active", roam:"UG", mb:9,   rem:"84%",  rssi:"-88",  cost:"UGX 1.9", dot:"bg-[#25D366]" },
-  { iccid:"8910300000123456​92", msisdn:"+256 770 100103", imei:"3568680527", telco:"MTN",     status:"Alarm",  roam:"KE", mb:110, rem:"7%",   rssi:"-112", cost:"UGX 5.0", dot:"bg-[#EF4444]" },
-  { iccid:"8910300000123456​93", msisdn:"+256 770 100104", imei:"3568680528", telco:"MTN",     status:"Active", roam:"UG", mb:12,  rem:"55%",  rssi:"-96",  cost:"UGX 2.4", dot:"bg-[#F97316]" },
-  { iccid:"89103000001234569​4", msisdn:"+254 730 220332", imei:"3568680529", telco:"Saf",     status:"Active", roam:"KE", mb:24,  rem:"41%",  rssi:"-90",  cost:"KES 0.5", dot:"bg-[#25D366]" },
-  { iccid:"89103000001234569​5", msisdn:"+256 750 340222", imei:"3568680530", telco:"Airtel",  status:"Active", roam:"UG", mb:30,  rem:"31%",  rssi:"-101", cost:"UGX 2.8", dot:"bg-[#F97316]" },
-  { iccid:"89103000001234569​6", msisdn:"+256 770 100105", imei:"3568680531", telco:"MTN",     status:"Active", roam:"UG", mb:15,  rem:"72%",  rssi:"-86",  cost:"UGX 2.1", dot:"bg-[#25D366]" },
-];
 
-const TOP20 = [
-  { id:"...5690", cost:"UGX 4.8/MB", dot:"bg-[#EF4444]" },
-  { id:"...5691", cost:"UGX 4.5/MB", dot:"bg-[#EF4444]" },
-  { id:"...5692", cost:"UGX 4.2/MB", dot:"bg-[#F97316]" },
-  { id:"...5693", cost:"UGX 3.9/MB", dot:"bg-[#F97316]" },
-  { id:"...5694", cost:"UGX 3.6/MB", dot:"bg-[#FBBF24]" },
-  { id:"...5695", cost:"UGX 3.3/MB", dot:"bg-[#FBBF24]" },
-  { id:"...5696", cost:"UGX 3.0/MB", dot:"bg-[#FBBF24]" },
-];
+// const TOP20 = [
+//   { id:"...5690", cost:"UGX 4.8/MB", dot:"bg-[#EF4444]" },
+//   { id:"...5691", cost:"UGX 4.5/MB", dot:"bg-[#EF4444]" },
+//   { id:"...5692", cost:"UGX 4.2/MB", dot:"bg-[#F97316]" },
+//   { id:"...5693", cost:"UGX 3.9/MB", dot:"bg-[#F97316]" },
+//   { id:"...5694", cost:"UGX 3.6/MB", dot:"bg-[#FBBF24]" },
+//   { id:"...5695", cost:"UGX 3.3/MB", dot:"bg-[#FBBF24]" },
+//   { id:"...5696", cost:"UGX 3.0/MB", dot:"bg-[#FBBF24]" },
+// ];
 
-const APN_LINKS = [
-  { apn:"mtn.private.apn",  telco:"MTN",       tenants:"3D DEMO, TEP", sync:"2m ago",  status:"OK",    action:"Edit • Rotate" },
-  { apn:"airtel.corp.apn",  telco:"Airtel",     tenants:"3D DEMO",      sync:"5m ago",  status:"OK",    action:"Edit • Rotate" },
-  { apn:"saf.vpn.apn",      telco:"Safaricom",  tenants:"VEBA-OPS",     sync:"41m ago", status:"WARN",  action:"Test Ping" },
-  { apn:"mtn.roam.apn",     telco:"MTN",        tenants:"KE-Logistics", sync:"1h ago",  status:"ALARM", action:"Disable" },
-];
+// const APN_LINKS = [
+//   { apn:"mtn.private.apn",  telco:"MTN",       tenants:"3D DEMO, TEP", sync:"2m ago",  status:"OK",    action:"Edit • Rotate" },
+//   { apn:"airtel.corp.apn",  telco:"Airtel",     tenants:"3D DEMO",      sync:"5m ago",  status:"OK",    action:"Edit • Rotate" },
+//   { apn:"saf.vpn.apn",      telco:"Safaricom",  tenants:"VEBA-OPS",     sync:"41m ago", status:"WARN",  action:"Test Ping" },
+//   { apn:"mtn.roam.apn",     telco:"MTN",        tenants:"KE-Logistics", sync:"1h ago",  status:"ALARM", action:"Disable" },
+// ];
 
-const SUSPEND_Q = [
-  { req:"Suspend",    iccid:"…5692", reason:"Roaming without bundle",  by:"waswa-ai", state:"PENDING" },
-  { req:"Reactivate", iccid:"…5690", reason:"Payment settled",         by:"finance",  state:"APPROVE" },
-  { req:"Suspend",    iccid:"…5695", reason:"Fraud ring pattern",      by:"risk",     state:"REVIEW"  },
-];
+// // const SUSPEND_Q = [
+//   { req:"Suspend",    iccid:"…5692", reason:"Roaming without bundle",  by:"waswa-ai", state:"PENDING" },
+//   { req:"Reactivate", iccid:"…5690", reason:"Payment settled",         by:"finance",  state:"APPROVE" },
+//   { req:"Suspend",    iccid:"…5695", reason:"Fraud ring pattern",      by:"risk",     state:"REVIEW"  },
+// ];
 
 const BLADE_EVENTS = [
   { time:"09:12", event:"Roam Enter",  note:"MCC 639 → KE" },
@@ -65,17 +61,122 @@ const BLADE_EVENTS = [
   { time:"09:30", event:"APN Reject",  note:"policy mismatch" },
 ];
 
-const BAR_DAYS = [
-  { day:"M", h:55, color:"bg-[#128C7E]" }, { day:"T", h:50, color:"bg-[#128C7E]" },
-  { day:"W", h:60, color:"bg-[#128C7E]" }, { day:"T", h:80, color:"bg-[#25D366]" },
-  { day:"F", h:70, color:"bg-[#F97316]" }, { day:"S", h:65, color:"bg-[#F97316]" },
-  { day:"S", h:72, color:"bg-[#25D366]" },
-];
+// const BAR_DAYS = [
+//   { day:"M", h:55, color:"bg-[#128C7E]" }, { day:"T", h:50, color:"bg-[#128C7E]" },
+//   { day:"W", h:60, color:"bg-[#128C7E]" }, { day:"T", h:80, color:"bg-[#25D366]" },
+//   { day:"F", h:70, color:"bg-[#F97316]" }, { day:"S", h:65, color:"bg-[#F97316]" },
+//   { day:"S", h:72, color:"bg-[#25D366]" },
+// ];
 
 // ─── Page ────────────────────────────────────────────────────────────────────
 export function SimPage() {
   const [bladeOpen, setBladeOpen] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
+  const [createSimOpen, setCreateSimOpen] = useState(false);
+
+  // ── Filters ─────────────────────────────────────────────────────────────
+  const [search, setSearch] = useState("");
+  const [telcoFilter, setTelcoFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("all");
+
+  // ── SIM statistics from API ─────────────────────────────────────────────
+  const [stats, setStats] = useState<SimStatistics | null>(null);
+  const [statsLoading, setStatsLoading] = useState(true);
+
+  // ── SIM inventory from API ───────────────────────────────────────────────
+  const [sims, setSims] = useState<SimCard[]>([]);
+  const [simsLoading, setSimsLoading] = useState(true);
+  const [simsError, setSimsError] = useState<string | null>(null);
+
+  useEffect(() => {
+    const controller = new AbortController();
+
+    getAllSimCards({ signal: controller.signal })
+      .then((res) => {
+        setSims(res.data);
+        setSimsLoading(false);
+      })
+      .catch((err) => {
+        if (err instanceof DOMException && err.name === "AbortError") return;
+        setSimsError(err instanceof ApiError ? err.message : "Failed to load SIM cards");
+        setSimsLoading(false);
+      });
+
+    getSimStatistics({ signal: controller.signal })
+      .then((res) => {
+        setStats(res.data);
+        setStatsLoading(false);
+      })
+      .catch((err) => {
+        if (err instanceof DOMException && err.name === "AbortError") return;
+        setStatsLoading(false);
+      });
+
+    return () => controller.abort();
+  }, []);
+
+  // ── Derived filter options + filtered list ──────────────────────────────
+  const telcoOptions = useMemo(() => [...new Set(sims.map((s) => s.telecom))].sort(), [sims]);
+  const statusOptions = useMemo(() => [...new Set(sims.map((s) => s.simcard_status))].sort(), [sims]);
+
+  const filteredSims = useMemo(() => {
+    let result = sims;
+    if (search) {
+      const q = search.toLowerCase();
+      result = result.filter(
+        (s) =>
+          s.simcard_number.toLowerCase().includes(q) ||
+          s.simcard_uid.toLowerCase().includes(q) ||
+          s.telecom.toLowerCase().includes(q),
+      );
+    }
+    if (telcoFilter !== "all") result = result.filter((s) => s.telecom === telcoFilter);
+    if (statusFilter !== "all") result = result.filter((s) => s.simcard_status === statusFilter);
+    return result;
+  }, [sims, search, telcoFilter, statusFilter]);
+
+  /** Download the SIM inventory as a CSV file. */
+  function downloadSimLedgerCsv() {
+    if (sims.length === 0) return;
+    const header = ["SIM Number", "Telecom", "Status", "Date Created", "UID"];
+    const rows = sims.map((s) => [
+      s.simcard_number,
+      s.telecom,
+      s.simcard_status,
+      s.date_created,
+      s.simcard_uid,
+    ]);
+    const csv = [header, ...rows].map((r) => r.map((v) => `"${v}"`).join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `sim-ledger-${new Date().toISOString().slice(0, 10)}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  /** Re-fetch after creating a new SIM. */
+  function refreshSims() {
+    setSimsLoading(true);
+    setSimsError(null);
+    setStatsLoading(true);
+    getAllSimCards()
+      .then((res) => {
+        setSims(res.data);
+        setSimsLoading(false);
+      })
+      .catch((err) => {
+        setSimsError(err instanceof ApiError ? err.message : "Failed to load SIM cards");
+        setSimsLoading(false);
+      });
+    getSimStatistics()
+      .then((res) => {
+        setStats(res.data);
+        setStatsLoading(false);
+      })
+      .catch(() => setStatsLoading(false));
+  }
 
   return (
     <div className="flex flex-1 min-h-0 min-w-0 overflow-hidden relative">
@@ -91,32 +192,61 @@ export function SimPage() {
                 <div className="text-[11px] text-[#667781] mt-0.5">Infrastructure &amp; Connectivity &gt; SIM Cards &amp; Connectivity Console</div>
               </div>
               <div className="flex gap-2 shrink-0">
-                <Pill color="green">+ New SIM</Pill>
-                <Pill color="green">Top-up Bundle</Pill>
-                <Pill color="green" onClick={() => setModalOpen(true)}>APN Link</Pill>
+                <Pill color="green" onClick={() => setCreateSimOpen(true)}>+ New SIM</Pill>
+                {/* <Pill color="green">Top-up Bundle</Pill>
+                <Pill color="green" onClick={() => setModalOpen(true)}>APN Link</Pill> */}
               </div>
             </div>
           </div>
 
           {/* Filters */}
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="flex-1 min-w-[180px] max-w-[240px] h-8 px-3 rounded-lg bg-white border border-[#E9EDEF] text-[11px] text-[#667781] flex items-center">Search ICCID / IMEI / MSISDN</span>
-            <span className="h-8 px-3 rounded-lg bg-white border border-[#E9EDEF] text-[12px] text-[#111B21] flex items-center gap-1"><span className="text-[#667781]">Telco</span> All ▾</span>
-            <span className="h-8 px-3 rounded-lg bg-white border border-[#E9EDEF] text-[12px] text-[#111B21] flex items-center gap-1"><span className="text-[#667781]">Status</span> Active ▾</span>
-            <span className="h-8 px-3 rounded-lg bg-white border border-[#E9EDEF] text-[12px] text-[#111B21] flex items-center gap-1"><span className="text-[#667781]">Roaming</span> Any ▾</span>
-            <span className="h-7 px-3 rounded-full bg-[#F97316]/15 border border-[#F97316]/30 text-[#F97316] text-[11px] font-black flex items-center cursor-pointer">High Cost Only</span>
-            <span className="h-7 px-3 rounded-full bg-[#EF4444]/15 border border-[#EF4444]/30 text-[#EF4444] text-[11px] font-black flex items-center cursor-pointer">APN Non-Comp</span>
+            <input
+              type="text"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search ICCID / IMEI / MSISDN"
+              className="flex-1 min-w-[180px] max-w-[240px] h-8 px-3 rounded-lg bg-white border border-[#E9EDEF] text-[11px] text-[#111B21] outline-none focus:border-[#128C7E] transition-colors placeholder:text-[#667781]"
+            />
+            <select
+              value={telcoFilter}
+              onChange={(e) => setTelcoFilter(e.target.value)}
+              className="h-8 px-3 rounded-lg bg-white border border-[#E9EDEF] text-[12px] text-[#111B21] outline-none focus:border-[#128C7E] transition-colors cursor-pointer"
+            >
+              <option value="all">Telco: All</option>
+              {telcoOptions.map((t) => (
+                <option key={t} value={t}>{t}</option>
+              ))}
+            </select>
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="h-8 px-3 rounded-lg bg-white border border-[#E9EDEF] text-[12px] text-[#111B21] outline-none focus:border-[#128C7E] transition-colors cursor-pointer"
+            >
+              <option value="all">Status: All</option>
+              {statusOptions.map((s) => (
+                <option key={s} value={s}>{s}</option>
+              ))}
+            </select>
+            {(search || telcoFilter !== "all" || statusFilter !== "all") && (
+              <button
+                onClick={() => { setSearch(""); setTelcoFilter("all"); setStatusFilter("all"); }}
+                className="h-7 px-3 rounded-full bg-[#EF4444]/15 border border-[#EF4444]/30 text-[#EF4444] text-[11px] font-black cursor-pointer"
+              >
+                Clear filters
+              </button>
+            )}
           </div>
 
           {/* ════════════ TOP SCROLL ════════════════════════════════ */}
 
-          {/* 5 KPIs */}
+          {/* 5 KPIs — from statistics API */}
           <div className="grid grid-cols-5 gap-3">
-            <KpiCard label="Active SIMs"    value="18,420" sub="+2.1% WoW"     subColor="text-[#25D366]" dot="bg-[#25D366]" />
-            <KpiCard label="In-stock"       value="1,120"  sub="-40 today"     subColor="text-[#F97316]" dot="bg-[#F97316]" />
-            <KpiCard label="Roaming Today"  value="318"    sub="+88 vs baseline" subColor="text-[#F97316]" dot="bg-[#F97316]" />
-            <KpiCard label="Avg Bundle Rem%" value="27%"   sub="⚠ <20% soon"   subColor="text-[#F97316]" dot="bg-[#F97316]" />
-            <KpiCard label="Cost / MB"      value="UGX 2.6" sub="+0.7 spike"   subColor="text-[#EF4444]" dot="bg-[#EF4444]" />
+            <KpiCard label="Total SIMs"   value={statsLoading || !stats ? "—" : stats.total_sims.toLocaleString()} sub="All registered" subColor="text-[#667781]" dot="bg-[#25D366]" />
+            <KpiCard label="Active"       value={statsLoading || !stats ? "—" : stats.active.toLocaleString()}     sub="Operational"    subColor="text-[#25D366]" dot="bg-[#25D366]" />
+            <KpiCard label="In-stock"     value={statsLoading || !stats ? "—" : stats.in_stock.toLocaleString()}   sub="Available"      subColor="text-[#34B7F1]" dot="bg-[#34B7F1]" />
+            <KpiCard label="Used"         value={statsLoading || !stats ? "—" : stats.used.toLocaleString()}       sub="Consumed"       subColor="text-[#F97316]" dot="bg-[#F97316]" />
+            <KpiCard label="Inactive"     value={statsLoading || !stats ? "—" : stats.inactive.toLocaleString()}   sub="Disabled"       subColor="text-[#EF4444]" dot="bg-[#EF4444]" />
           </div>
 
           {/* Waswa AI — Connectivity Risk */}
@@ -149,29 +279,33 @@ export function SimPage() {
               </div>
             </div>
             <div className="overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            <table className="w-full text-[12px] min-w-[1100px]">
+            <table className="w-full text-[12px] min-w-[800px]">
               <thead><tr className="border-b border-[#E9EDEF] bg-[#F8FAFC]">
-                {["","ICCID","MSISDN","IMEI","Telco","Status","Roam","MB/day","Rem%","RSSI","Cost/MB",""].map((h,i) => (
+                {["","SIM Number","Telecom","Status","Date Created","UID"].map((h,i) => (
                   <th key={i} className="text-left px-2 py-2 font-black text-[#667781]">{h}</th>
                 ))}
               </tr></thead>
               <tbody>
-                {SIMS.map((s,i) => (
-                  <tr key={i} onClick={() => setBladeOpen(true)} className="border-b border-[#E9EDEF] last:border-0 hover:bg-[#F8FAFC] cursor-pointer">
-                    <td className="px-2 py-2"><span className={`w-2.5 h-2.5 rounded-full inline-block ${s.dot}`} /></td>
-                    <td className="px-2 py-2 font-mono text-[#111B21] text-[11px]">{s.iccid}</td>
-                    <td className="px-2 py-2 text-[#667781]">{s.msisdn}</td>
-                    <td className="px-2 py-2 text-[#667781]">{s.imei}</td>
-                    <td className="px-2 py-2 text-[#667781]">{s.telco}</td>
-                    <td className="px-2 py-2"><span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${stBadge[s.status]}`}>{s.status}</span></td>
-                    <td className="px-2 py-2 text-[#667781]">{s.roam}</td>
-                    <td className="px-2 py-2 text-[#111B21]">{s.mb}</td>
-                    <td className="px-2 py-2 text-[#667781]">{s.rem}</td>
-                    <td className="px-2 py-2 text-[#667781]">{s.rssi}</td>
-                    <td className="px-2 py-2 text-[#111B21]">{s.cost}</td>
-                    <td className="px-2 py-2 text-[#667781]">⋮</td>
-                  </tr>
-                ))}
+                {simsLoading ? (
+                  <tr><td colSpan={6} className="px-4 py-8 text-center text-[12px] text-[#667781]">Loading SIM cards…</td></tr>
+                ) : simsError ? (
+                  <tr><td colSpan={6} className="px-4 py-8 text-center text-[12px] text-[#EF4444]">{simsError}</td></tr>
+                ) : sims.length === 0 ? (
+                  <tr><td colSpan={6} className="px-4 py-8 text-center text-[12px] text-[#667781]">No SIM cards registered yet.</td></tr>
+                ) : filteredSims.length === 0 ? (
+                  <tr><td colSpan={6} className="px-4 py-8 text-center text-[12px] text-[#667781]">No SIM cards match the current filters.</td></tr>
+                ) : (
+                  filteredSims.map((s) => (
+                    <tr key={s.simcard_uid} onClick={() => setBladeOpen(true)} className="border-b border-[#E9EDEF] last:border-0 hover:bg-[#F8FAFC] cursor-pointer">
+                      <td className="px-2 py-2"><span className={`w-2.5 h-2.5 rounded-full inline-block ${STATUS_DOT[s.simcard_status] ?? "bg-[#667781]"}`} /></td>
+                      <td className="px-2 py-2 font-mono text-[#111B21] text-[11px]">{s.simcard_number}</td>
+                      <td className="px-2 py-2 text-[#667781]">{s.telecom}</td>
+                      <td className="px-2 py-2"><span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${STATUS_BADGE[s.simcard_status] ?? "text-[#667781]"}`}>{s.simcard_status}</span></td>
+                      <td className="px-2 py-2 text-[#667781]">{s.date_created}</td>
+                      <td className="px-2 py-2 text-[#667781] font-mono text-[10px]">{s.simcard_uid}</td>
+                    </tr>
+                  ))
+                )}
               </tbody>
             </table>
             </div>
@@ -180,7 +314,7 @@ export function SimPage() {
           {/* ════════════ MID SCROLL ════════════════════════════════ */}
 
           {/* Roaming Cost Radar + Top 20 */}
-          <div className="grid grid-cols-[1fr_340px] gap-3">
+          {/* <div className="grid grid-cols-[1fr_340px] gap-3">
             <div className="bg-white border border-[#E9EDEF] rounded-xl p-4">
               <div className="font-black text-[13px] text-[#111B21] mb-3">Roaming Cost Radar (7d)</div>
               <div className="flex items-end gap-3 h-[120px]">
@@ -202,25 +336,25 @@ export function SimPage() {
                 </div>
               ))}
             </div>
-          </div>
+          </div> */}
 
           {/* APN Compliance & Private APN Links */}
           <div className="bg-white border border-[#E9EDEF] rounded-xl overflow-hidden">
-            <div className="px-4 py-3 border-b border-[#E9EDEF] flex items-center justify-between">
+            {/* <div className="px-4 py-3 border-b border-[#E9EDEF] flex items-center justify-between">
               <div>
                 <div className="font-black text-[13px] text-[#111B21]">APN Compliance &amp; Private APN Links</div>
                 <div className="text-[11px] text-[#667781] mt-0.5">Link telco private APNs to tenants • rotate credentials • test ping</div>
               </div>
               <Pill color="green" onClick={() => setModalOpen(true)}>Link Private APN</Pill>
-            </div>
+            </div> */}
             <table className="w-full text-[12px]">
-              <thead><tr className="border-b border-[#E9EDEF] bg-[#F8FAFC]">
+              {/* <thead><tr className="border-b border-[#E9EDEF] bg-[#F8FAFC]">
                 {["APN","Telco","Tenants","Last Sync","Status","Actions"].map(h => (
                   <th key={h} className="text-left px-3 py-2 font-black text-[#667781]">{h}</th>
                 ))}
-              </tr></thead>
+              </tr></thead> */}
               <tbody>
-                {APN_LINKS.map(a => (
+                {/* {APN_LINKS.map(a => (
                   <tr key={a.apn} className="border-b border-[#E9EDEF] last:border-0">
                     <td className="px-3 py-2.5 font-black text-[#111B21]">{a.apn}</td>
                     <td className="px-3 py-2.5 text-[#667781]">{a.telco}</td>
@@ -229,7 +363,7 @@ export function SimPage() {
                     <td className="px-3 py-2.5"><span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${stBadge[a.status]}`}>{a.status}</span></td>
                     <td className="px-3 py-2.5 text-[#667781]">{a.action}</td>
                   </tr>
-                ))}
+                ))} */}
               </tbody>
             </table>
           </div>
@@ -237,7 +371,7 @@ export function SimPage() {
           {/* ════════════ BOTTOM SCROLL ═════════════════════════════ */}
 
           {/* SIM Suspend / Reactivate Queue */}
-          <div className="bg-white border border-[#E9EDEF] rounded-xl overflow-hidden">
+          {/* <div className="bg-white border border-[#E9EDEF] rounded-xl overflow-hidden">
             <div className="px-4 py-3 border-b border-[#E9EDEF] flex items-center justify-between">
               <div>
                 <div className="font-black text-[13px] text-[#111B21]">SIM Suspend / Reactivate Queue (HIC)</div>
@@ -263,16 +397,16 @@ export function SimPage() {
                 ))}
               </tbody>
             </table>
-          </div>
+          </div> */}
 
           {/* Reports & Exports */}
           <div className="bg-white border border-[#E9EDEF] rounded-xl p-4">
             <div className="font-black text-[13px] text-[#111B21]">Reports &amp; Exports</div>
             <div className="text-[11px] text-[#667781] mt-0.5 mb-3">CSV / Excel / PDF • schedule email delivery • PowerBI dataset</div>
             <div className="flex gap-2 mb-3">
-              <button className="h-8 px-4 rounded-lg bg-[#25D366] text-[#075E54] text-[11px] font-black border-none cursor-pointer">Download SIM Ledger (CSV)</button>
-              <button className="h-8 px-4 rounded-lg bg-[#128C7E] text-white text-[11px] font-black border-none cursor-pointer">Export Roaming Costs (XLSX)</button>
-              <button className="h-8 px-4 rounded-lg bg-[#34B7F1] text-white text-[11px] font-black border-none cursor-pointer">Schedule Weekly Email</button>
+              <button onClick={downloadSimLedgerCsv} disabled={simsLoading || sims.length === 0} className="h-8 px-4 rounded-lg bg-[#25D366] text-[#075E54] text-[11px] font-black border-none cursor-pointer disabled:opacity-50">Download SIM Ledger (CSV)</button>
+              {/* <button className="h-8 px-4 rounded-lg bg-[#128C7E] text-white text-[11px] font-black border-none cursor-pointer">Export Roaming Costs (XLSX)</button>
+              <button className="h-8 px-4 rounded-lg bg-[#34B7F1] text-white text-[11px] font-black border-none cursor-pointer">Schedule Weekly Email</button> */}
             </div>
             <div className="border border-[#E9EDEF] rounded-lg px-3 py-2 text-[11px] text-[#667781]">
               Usage Metering (US-03): all SIM events emit immutable usage events to Kafka topic: usage.connectivity
@@ -422,6 +556,13 @@ export function SimPage() {
           </div>
         </div>
       )}
+
+      {/* ── Create SIM Dialog ──────────────────────────────────── */}
+      <CreateSimDialog
+        open={createSimOpen}
+        onClose={() => setCreateSimOpen(false)}
+        onCreated={() => refreshSims()}
+      />
 
       {/* Floating AI button */}
       <button className="fixed right-5 bottom-5 w-14 h-14 rounded-full bg-[#25D366] text-white font-black text-[14px] border-none cursor-pointer grid place-items-center z-40 shadow-lg">AI</button>
