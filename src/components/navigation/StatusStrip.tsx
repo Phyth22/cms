@@ -44,23 +44,21 @@ interface StatusStripProps {
 }
 
 const DEFAULT_CHIPS: StatusChip[] = [
-  { id: "scope",  label: "Scope: Dealer→Client→Org"       },
+  { id: "scope",  label: "Scope: Client→Org"       },
   { id: "rbac",   label: "RBAC: SYSADMIN / Admin",  variant: "ok"      },
   { id: "wallet", label: "Wallet: UGX 8.6M • 1.24M Tok", variant: "success" },
-  { id: "burn",   label: "Burn: 1.7 Tok/s"                },
-  { id: "runout", label: "Run-out: ≈ 8.1 days"            },
+  { id: "burn",   label: "Used: 1.7 Tok/s"                },
+  { id: "runout", label: "Running: ≈ 8 Tok/s"            },
   { id: "status", label: "Status: 🟢 Green • 99.82%"      },
-  { id: "fresh",  label: "Fresh: p95 22s • last msg 7s"   },
-  { id: "alerts", label: "Alerts: P1:2  P2:11",    variant: "warn"    },
+  { id: "fresh",  label: "Expired: 5 Tok/s"   },
+  { id: "alerts", label: "Payment-Processor-APIs : Stable(OK)",    variant: "info"    },
   { id: "pay",    label: "Pay: M-Pesa OK • MTN OK", variant: "info"    },
-  { id: "waswa",  label: "Waswa: ON • HITL 3",      variant: "ok"      },
-  { id: "range",  label: "Range: 24h"                     },
-  { id: "audit",  label: "Audit: ON • 89d"                },
+  { id: "waswa",  label: "Waswa Co-Pilot: ON",      variant: "ok"      }
 ];
 
 const DEFAULT_ACTIONS: StripAction[] = [
-  { id: "new",    label: "+ New",  variant: "green" },
-  { id: "export", label: "Export", variant: "azure" },
+  // { id: "new",    label: "+ New",  variant: "green" },
+  // { id: "export", label: "Export", variant: "azure" },
 ];
 
 const hideScrollbar: React.CSSProperties = {

@@ -23,10 +23,13 @@ interface AegisStatusStripProps {
 }
 
 const DEFAULT_TICKER = [
-  "Forecast: Healthy",
-  "API 99.95%",
-  "Kafka lag 12s",
-  "Redis 97%",
+  "FrontEnd-APIs: Operational",
+  "Server: Online",
+  "Bandwidth: 120 Gbps",
+  "Bandwidth-Burn: 85 Gbps",
+  "Systemd-Process: Running",
+  "SSE-Connections: 4,812",
+  "Uptime 99.8%"
 ];
 
 const hideScrollbar: React.CSSProperties = {
@@ -47,33 +50,7 @@ export function AegisStatusStrip({
   return (
     <div className="h-10 flex items-center bg-white border-b border-[#E9EDEF] sticky top-12 z-[90] shrink-0 overflow-hidden">
 
-      {/* Tenant + BAC badge */}
-      <div className="flex items-center gap-2 px-3 shrink-0 border-r border-[#E9EDEF] h-full">
-        <span className="text-[11px] text-[#667781]">Tenant</span>
-        <span className="text-[12px] font-extrabold text-[#111B21]">{tenant}</span>
-        <span className="text-[10px] text-[#667781]">▾</span>
-        <span className="text-[10px] font-extrabold bg-[#128C7E] text-white px-2 py-0.5 rounded-full whitespace-nowrap ml-1">
-          BAC: SYS_ADMI
-        </span>
-      </div>
-
-      {/* Wallet */}
-      <div className="hidden md:flex items-center gap-1.5 px-3 shrink-0 border-r border-[#E9EDEF] h-full">
-        <span className="text-[11px] text-[#667781]">Wallet</span>
-        <span className="text-[12px] font-extrabold text-[#111B21]">{walletBalance}</span>
-        <button
-          onClick={onOpenTopup}
-          className="text-[11px] font-extrabold text-[#25D366] hover:text-[#1A9E52] transition-colors cursor-pointer bg-transparent border-none"
-        >
-          Top-up
-        </button>
-      </div>
-
-      {/* Burn */}
-      <div className="hidden lg:flex items-center gap-1.5 px-3 shrink-0 border-r border-[#E9EDEF] h-full">
-        <span className="text-[11px] text-[#667781]">Burn:</span>
-        <span className="text-[12px] font-extrabold text-[#F97316]">{burnRate}</span>
-      </div>
+      
 
       {/* Live ticker — scrollable, fills remaining space */}
       <div className="flex-1 min-w-0 h-full flex items-center" style={hideScrollbar}>
