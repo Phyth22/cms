@@ -453,7 +453,7 @@ function AirlockModal({ open, onClose }: { open: boolean; onClose: () => void })
         {/* Card header */}
         <div className="px-6 pt-5 pb-4">
           <div className="font-black text-[18px] text-[#111B21]">
-            Screen 01 — Airlock: Login &amp; Authentication
+             Airlock: Login &amp; Authentication
           </div>
           <div className="text-[12px] text-[#667781] mt-1">
             System Admin access • MFA enforced • Irrefutable audit trail
