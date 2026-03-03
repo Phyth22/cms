@@ -23,8 +23,8 @@ interface TopBarProps {
 }
 
 export function TopBar({
-  brandName         = "NAVAS v26",
-  pageTitle         = "NOC Bridge — System Health CMS",
+  brandName         = "NAVAS CORE CMS",
+  pageTitle         = "NOC Bridge — Console",
   searchPlaceholder = "Search tenants, units, tokens, incidents…",
   roles = [
     { label: "SYSADMIN",  variant: "teal" },

@@ -56,8 +56,7 @@ import { useAuth } from "../../auth/AuthContext";
 const AEGIS_TICKER = [
   "Forecast: Healthy",
   "API 99.95%",
-  "Kafka lag 12s",
-  "Redis 97%",
+  "Socket Threads-Open: 5",
 ];
 
 const AEGIS_NAV_ITEMS = [
@@ -158,14 +157,119 @@ const HITL_ROWS: ApprovalRow[] = [
 // Page
 // ─────────────────────────────────────────────────────────────────────────────
 
+// Cookie helpers (used for simple auth state persistence)
+function setCookie(name: string, value: string, days = 30) {
+  try {
+    const d = new Date();
+    d.setTime(d.getTime() + days * 24 * 60 * 60 * 1000);
+    const expires = "expires=" + d.toUTCString();
+    const secure = window.location.protocol === "https:" ? "; Secure" : "";
+    document.cookie = `${name}=${encodeURIComponent(value)}; ${expires}; Path=/; SameSite=Lax${secure}`;
+  } catch (e) {
+    // ignore in non-browser environments
+  }
+}
+
+function getCookie(name: string) {
+  try {
+    const v = document.cookie.match('(^|;)\\s*' + name + '\\s*=\\s*([^;]+)');
+    return v ? decodeURIComponent(v.pop() || "") : null;
+  } catch (e) {
+    return null;
+  }
+}
+
+function eraseCookie(name: string) {
+  setCookie(name, "", -1);
+}
+
+
 export function AegisDashboard() {
   const { state }              = useAuth();
   const [topupOpen,      setTopupOpen]      = useState(false);
   const [waswaOn,        setWaswaOn]        = useState(true);
   const [waswaDrawerOpen,setWaswaDrawerOpen]= useState(false);
   // Show Airlock modal if not authenticated
-  const [airlockOpen,    setAirlockOpen]    = useState(state.status !== "authenticated");
+  const [airlockOpen,    setAirlockOpen]    = useState(() => !getCookie("account_uid"));
+  // Statistics metrics state
+  const [unitsOnline,    setUnitsOnline]    = useState({ count: 0, total: 0 });
+  const [unitsOffline,   setUnitsOffline]   = useState({ count: 0 });
+  const [vebaEnabled,    setVebaEnabled]    = useState(0);
+  const [vebaDisabled,   setVebaDisabled]   = useState(0);
+  const [vebaTokensActive, setVebaTokensActive] = useState(0);
+  const [vebaTokensExpired, setVebaTokensExpired] = useState(0);
 
+  // Loading states
+  const [loadingUnitsOnline, setLoadingUnitsOnline] = useState(true);
+  const [loadingUnitsOffline, setLoadingUnitsOffline] = useState(true);
+  const [loadingVebaEnabled, setLoadingVebaEnabled] = useState(true);
+  const [loadingVebaDisabled, setLoadingVebaDisabled] = useState(true);
+  const [loadingVebaTokensActive, setLoadingVebaTokensActive] = useState(true);
+  const [loadingVebaTokensExpired, setLoadingVebaTokensExpired] = useState(true);
+
+  // Fetch all statistics
+  useEffect(() => {
+    const fetchStats = async () => {
+      const base = "https://narvas.3dservices.co.ug";
+      try {
+        const [onlineResp, offlineResp, enabledResp, disabledResp, activeResp, expiredResp] = await Promise.all([
+          fetch(`${base}/statistics/units/online`),
+          fetch(`${base}/statistics/units/offline`),
+          fetch(`${base}/statistics/veba/units/enabled`),
+          fetch(`${base}/statistics/veba/units/disabled`),
+          fetch(`${base}/statistics/veba/tokens/active`),
+          fetch(`${base}/statistics/veba/tokens/expired`),
+        ]);
+
+        const onlineData = await onlineResp.json();
+        const offlineData = await offlineResp.json();
+        const enabledData = await enabledResp.json();
+        const disabledData = await disabledResp.json();
+        const activeData = await activeResp.json();
+        const expiredData = await expiredResp.json();
+
+        if (onlineData?.status === "success") {
+          setUnitsOnline({ count: onlineData.data?.count ?? 0, total: onlineData.data?.total_configured_units ?? 0 });
+        }
+        setLoadingUnitsOnline(false);
+
+        if (offlineData?.status === "success") {
+          setUnitsOffline({ count: offlineData.data?.count ?? 0 });
+        }
+        setLoadingUnitsOffline(false);
+
+        if (enabledData?.status === "success") {
+          setVebaEnabled(enabledData.data?.count ?? 0);
+        }
+        setLoadingVebaEnabled(false);
+
+        if (disabledData?.status === "success") {
+          setVebaDisabled(disabledData.data?.count ?? 0);
+        }
+        setLoadingVebaDisabled(false);
+
+        if (activeData?.status === "success") {
+          setVebaTokensActive(activeData.data?.count ?? 0);
+        }
+        setLoadingVebaTokensActive(false);
+
+        if (expiredData?.status === "success") {
+          setVebaTokensExpired(expiredData.data?.count ?? 0);
+        }
+        setLoadingVebaTokensExpired(false);
+      } catch (e) {
+        console.error("Failed to fetch statistics", e);
+        setLoadingUnitsOnline(false);
+        setLoadingUnitsOffline(false);
+        setLoadingVebaEnabled(false);
+        setLoadingVebaDisabled(false);
+        setLoadingVebaTokensActive(false);
+        setLoadingVebaTokensExpired(false);
+      }
+    };
+
+    fetchStats();
+  }, []);
   return (
     <div className="min-h-screen min-h-dvh flex flex-col bg-[#F0F2F5] pb-14 md:pb-0 overflow-x-hidden w-full">
 
@@ -186,15 +290,7 @@ export function AegisDashboard() {
 
       <div className="flex flex-1 min-h-0 min-w-0 overflow-x-hidden">
 
-        {/* 3. Primary side nav */}
-        <NavRail items={AEGIS_NAV_ITEMS} />
-
-        {/* 4. Accordion sidebar */}
-        <AccordionSidebar
-          title="NAVIGATION"
-          groups={AEGIS_SIDEBAR_GROUPS}
-          defaultOpen="cmd"
-        />
+        
 
         {/* 5. Main workspace */}
         <main className="flex-1 min-w-0 overflow-y-auto overflow-x-hidden flex flex-col gap-3 p-3">
@@ -212,40 +308,43 @@ export function AegisDashboard() {
                 Live: Kafka→Redis→SSE (≤3s). All high-risk actions require HITL/HIC approval + audit.
               </div>
             </div>
-            <div className="flex gap-2 flex-wrap ml-auto shrink-0">
+            {/* <div className="flex gap-2 flex-wrap ml-auto shrink-0">
               <ActionPill color="green">+ New…</ActionPill>
               <ActionPill color="azure">Open Approvals</ActionPill>
               <ActionPill color="ghost">⋮</ActionPill>
-            </div>
+            </div> */}
           </div>
 
           {/* KPI grid — 3 large cards matching screenshot */}
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
             <BigKpiCard
-              label="Active units online"
-              value="48,120 / 52,300"
+              label="Active units online (all tenants)"
+              value={`${unitsOnline.count.toLocaleString()} / ${unitsOnline.total.toLocaleString()}`}
               delta="+0.6% vs 1h"
               deltaColor="green"
+              isLoading={loadingUnitsOnline}
             />
             <BigKpiCard
-              label="Token burn (all tenants)"
-              value="2.4 T/s"
+              label="Units Offline (all tenants)"
+              value={unitsOffline.count.toLocaleString()}
               delta="+12% spike"
               deltaColor="green"
+              isLoading={loadingUnitsOffline}
             />
             <BigKpiCard
-              label="Payments success (24h)"
-              value="96.8%"
+              label="VEBA Enabled Units (all tenants)"
+              value={vebaEnabled.toLocaleString()}
               delta="-1.2%"
               deltaColor="red"
+              isLoading={loadingVebaEnabled}
             />
           </div>
 
           {/* Second KPI row */}
           <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3">
-            <BigKpiCard label="VEBA bookings (today)"  value="1,284"  delta="+8.4%"  deltaColor="green" />
-            <BigKpiCard label="Leakage prevented"       value="342"    delta="±0%"    deltaColor="muted"  />
-            <BigKpiCard label="P1 alerts open"          value="7"      delta="+2"     deltaColor="green"  />
+            <BigKpiCard label="VEBA Disabled Units (all tenants)"  value={vebaDisabled.toLocaleString()}  delta="+8.4%"  deltaColor="green" isLoading={loadingVebaDisabled} />
+            <BigKpiCard label="VEBA Tokens Expired (all tenants)"       value={vebaTokensExpired.toLocaleString()}    delta="±0%"    deltaColor="muted" isLoading={loadingVebaTokensExpired}  />
+            <BigKpiCard label="VEBA Tokens Active (all tenants)"          value={vebaTokensActive.toLocaleString()}      delta="+2"     deltaColor="green" isLoading={loadingVebaTokensActive}  />
           </div>
 
           {/* Waswa AI + HITL queue row */}
@@ -255,7 +354,7 @@ export function AegisDashboard() {
             <div className="bg-white border border-[#E9EDEF] rounded-xl overflow-hidden">
               <div className="px-4 py-3 border-b border-[#E9EDEF] flex flex-wrap items-center gap-3">
                 <div className="font-black text-[13px] text-[#111B21]">
-                  Waswa AI Co‑Pilot — HiC Insights (Today)
+                  Waswa AI Co‑Pilot — HiC(Human In Command) Insights (Today)
                 </div>
                 <span className="text-[10px] font-extrabold bg-[#128C7E] text-white px-2.5 py-1 rounded-full">
                   AI ON
@@ -366,11 +465,13 @@ function BigKpiCard({
   value,
   delta,
   deltaColor = "green",
+  isLoading = false,
 }: {
   label:       string;
   value:       string;
   delta:       string;
   deltaColor?: "green" | "red" | "muted";
+  isLoading?:  boolean;
 }) {
   const deltaCls = {
     green: "text-[#25D366]",
@@ -381,8 +482,17 @@ function BigKpiCard({
   return (
     <div className="bg-white border border-[#E9EDEF] rounded-xl p-4 min-h-[90px] flex flex-col gap-1">
       <div className="text-[11px] text-[#667781]">{label}</div>
-      <div className="text-[24px] font-black text-[#111B21] leading-tight">{value}</div>
-      <div className={`text-[12px] font-extrabold ${deltaCls}`}>{delta}</div>
+      {isLoading ? (
+        <>
+          <div className="h-7 bg-gray-200 rounded-lg animate-pulse" />
+          <div className="h-4 bg-gray-200 rounded-lg animate-pulse" />
+        </>
+      ) : (
+        <>
+          <div className="text-[24px] font-black text-[#111B21] leading-tight">{value}</div>
+          <div className={`text-[12px] font-extrabold ${deltaCls}`}>{delta}</div>
+        </>
+      )}
     </div>
   );
 }
@@ -416,23 +526,41 @@ function ActionPill({ color = "ghost", onClick, children }: { color?: string; on
 function AirlockModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const { state, login, verifyMfa } = useAuth();
 
-  const [email,    setEmail]    = useState(state.loginHint?.email ?? "admin@3d-services.africa");
-  const [password, setPassword] = useState("••••••••••");
+  const [email,    setEmail]    = useState(state.loginHint?.email ?? "");
+  const [password, setPassword] = useState("");
   const [mfa,      setMfa]      = useState("371902");
   const [busy,     setBusy]     = useState(false);
   const [err,      setErr]      = useState<string | null>(null);
 
   useEffect(() => {
-    if (state.status === "authenticated") { onClose(); }
+    // Close modal if auth state indicates authenticated OR if account_uid cookie exists
+    if (state.status === "authenticated" || getCookie("_nvxs_account_uid")) { onClose(); }
   }, [state.status]);
 
   if (!open) return null;
 
   const handleLogin = async () => {
     setBusy(true); setErr(null);
-    try { await login(email, password); }
-    catch (e: unknown) { setErr(e instanceof Error ? e.message : "Login failed"); }
-    finally { setBusy(false); }
+    try {
+      const resp = await fetch("https://narvas.3dservices.co.ug/users/auth", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ data: { username: email, password } }),
+      });
+      const json = await resp.json();
+      if (json?.status === "success" && json?.data?.account_uid) {
+        const d = json.data;
+        setCookie("_nvxs_account_uid", d.account_uid || "");
+        setCookie("_nvxs_account_type", d.account_type || "");
+        setCookie("_nvxs_account_root", d.account_root || "");
+        setCookie("_nvxs_account_role", d.account_role || "");
+        onClose();
+      } else {
+        setErr(json?.message || "Invalid credentials, try again");
+      }
+    } catch (e: unknown) {
+      setErr(e instanceof Error ? e.message : "Login failed");
+    } finally { setBusy(false); }
   };
 
   const handleVerify = async () => {
@@ -453,7 +581,7 @@ function AirlockModal({ open, onClose }: { open: boolean; onClose: () => void })
         {/* Card header */}
         <div className="px-6 pt-5 pb-4">
           <div className="font-black text-[18px] text-[#111B21]">
-            Screen 01 — Airlock: Login &amp; Authentication
+            Airlock: Login &amp; Authentication
           </div>
           <div className="text-[12px] text-[#667781] mt-1">
             System Admin access • MFA enforced • Irrefutable audit trail
@@ -483,7 +611,7 @@ function AirlockModal({ open, onClose }: { open: boolean; onClose: () => void })
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && handleLogin()}
-                  placeholder="admin@3d-services.africa"
+                  placeholder="Username"
                 />
               </AirlockField>
 
@@ -512,18 +640,7 @@ function AirlockModal({ open, onClose }: { open: boolean; onClose: () => void })
                 {busy ? "Signing in…" : "Login →"}
               </AirlockPrimaryBtn>
 
-              <div className="text-[11px] text-[#667781]">Or continue with</div>
-              <div className="grid grid-cols-3 gap-2.5">
-                {["Microsoft", "Google", "Okta"].map((p) => (
-                  <button
-                    key={p}
-                    className="h-11 rounded-xl border border-[#E9EDEF] bg-[#F8F9FA] text-[12px] font-extrabold text-[#111B21] cursor-pointer hover:bg-[#F0F2F5] transition-colors flex items-center justify-center gap-2"
-                  >
-                    {p}
-                    <span className="text-[10px] font-extrabold bg-[#128C7E] text-white px-1.5 py-0.5 rounded-full">SSO</span>
-                  </button>
-                ))}
-              </div>
+             
 
               {/* Security notice */}
               <div className="bg-[#E8F5F2] border border-[#BFE7E0] rounded-xl px-4 py-3">

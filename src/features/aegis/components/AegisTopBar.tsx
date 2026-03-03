@@ -8,7 +8,17 @@
  *
  * All styles: Tailwind utility classes only.
  */
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
+
+// Cookie helper
+function getCookie(name: string) {
+  try {
+    const v = document.cookie.match('(^|;)\\s*' + name + '\\s*=\\s*([^;]+)');
+    return v ? decodeURIComponent(v.pop() || "") : null;
+  } catch (e) {
+    return null;
+  }
+}
 
 interface AegisTopBarProps {
   tenant?:       string;
@@ -23,13 +33,13 @@ interface AegisTopBarProps {
 }
 
 const DEFAULT_TICKER = [
-  "API 99.95%",
-  "Kafka lag 12s",
-  "Redis 97%",
-  "Cassandra p95 9ms",
-  "MoMo retries 41",
-  "SSE 4,812 clients",
-  "Uptime 99.8%",
+  "FrontEnd-APIs: Operational",
+  "Server: Online",
+  "Bandwidth: 120 Gbps",
+  "Bandwidth-Burn: 85 Gbps",
+  "Systemd-Process: Running",
+  "SSE-Connections: 4,812",
+  "Uptime 99.8%"
 ];
 
 const hideScrollbar: React.CSSProperties = {
@@ -49,6 +59,43 @@ export function AegisTopBar({
   whoLabel      = "Tim • SYS_ADMIN",
   tickerItems   = DEFAULT_TICKER,
 }: AegisTopBarProps) {
+  const [userDetails, setUserDetails] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchUserDetails = async () => {
+      const accountUid = getCookie("_nvxs_account_uid");
+      if (!accountUid) {
+        setLoading(false);
+        return;
+      }
+      try {
+        const resp = await fetch(
+          `https://narvas.3dservices.co.ug/users/${accountUid}/details`
+        );
+        const json = await resp.json();
+        if (json?.status === "success" && json?.data) {
+          setUserDetails(json.data);
+        }
+      } catch (e) {
+        console.error("Failed to fetch user details", e);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchUserDetails();
+  }, []);
+
+  // Derive display values
+  const displayTenant = userDetails?.primary_account || tenant;
+  const displayAvatarInitial = userDetails?.account_name
+    ? userDetails.account_name.charAt(0).toUpperCase()
+    : avatarInitial;
+  const displayWhoLabel = userDetails
+    ? `${userDetails.account_name} • ${userDetails.account_role?.toUpperCase().replace(/_/g, " ")}`
+    : whoLabel;
+
   return (
     <header className="h-12 flex items-center gap-0 bg-[#075E54] text-white sticky top-0 z-[100] shrink-0 overflow-hidden">
 
@@ -57,10 +104,10 @@ export function AegisTopBar({
         {/* Tenant selector */}
         <div className="flex items-center gap-1.5">
           <span className="text-[11px] font-extrabold bg-[#25D366] text-[#075E54] px-2 py-0.5 rounded-full whitespace-nowrap">
-            BAC: SYS_ADMI
+            BAC: {userDetails?.account_role?.substring(0, 7).toUpperCase() || "SYS_ADMI"}
           </span>
           <span className="text-[12px] font-extrabold opacity-90 whitespace-nowrap hidden sm:block">
-            {tenant}
+            {displayTenant}
           </span>
           <span className="text-white/50 text-[11px]">▾</span>
         </div>
@@ -125,10 +172,10 @@ export function AegisTopBar({
         {/* Avatar + name */}
         <div className="flex items-center gap-1.5 border-l border-white/10 pl-2">
           <div className="w-7 h-7 rounded-full bg-[#128C7E] grid place-items-center font-bold text-[12px] shrink-0">
-            {avatarInitial}
+            {displayAvatarInitial}
           </div>
           <span className="hidden sm:block text-[11px] font-extrabold opacity-90 whitespace-nowrap">
-            {whoLabel}
+            {displayWhoLabel}
           </span>
         </div>
       </div>

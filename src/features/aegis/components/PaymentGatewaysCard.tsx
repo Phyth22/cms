@@ -14,8 +14,6 @@ export type ProviderStatus = "OK" | "WARN" | "CRITICAL";
 export interface PaymentProvider {
   name:    string;
   success: string;
-  settle:  string;
-  note:    string;
   status:  ProviderStatus;
 }
 
@@ -31,11 +29,9 @@ const statusBadge: Record<ProviderStatus, string> = {
 };
 
 const DEFAULT_PROVIDERS: PaymentProvider[] = [
-  { name: "MTN (UG)",   success: "98.1%", settle: "p95 6m",  note: "webhook backlog 12", status: "OK"   },
-  { name: "Airtel (UG)",success: "96.2%", settle: "p95 11m", note: "retries 29",          status: "WARN" },
-  { name: "Airtel (KE)",success: "97.4%", settle: "p95 8m",  note: "retries 4",           status: "OK"   },
-  { name: "M-Pesa (KE)",success: "99.0%", settle: "p95 4m",  note: "callback gaps 0",     status: "OK"   },
-  { name: "Cards",      success: "94.6%", settle: "—",       note: "3DS failures 1.1%",   status: "WARN" },
+  { name: "MTN - UG",   success: "98.1%", status: "OK"   },
+  { name: "Airtel - UG",success: "96.2%", status: "OK" },
+  { name: "MPESA - KE",success: "97.4%", status: "OK"   }
 ];
 
 export function PaymentGatewaysCard({
@@ -49,7 +45,7 @@ export function PaymentGatewaysCard({
         <div>
           <div className="font-black text-[13px] text-[#111B21]">Mobile Money + ePayment Gateways</div>
           <div className="text-[11px] text-[#667781] mt-0.5">
-            MTN MoMo • Airtel Money • M-Pesa • Cards (Pesapal/DPO) — webhooks monitored
+            MTN MoMo • Airtel Money • M-Pesa
           </div>
         </div>
         <span className="text-[11px] text-[#667781] whitespace-nowrap shrink-0 ml-3">{lastUpdated}</span>
@@ -68,9 +64,7 @@ export function PaymentGatewaysCard({
               {p.name}
             </span>
             {/* Stats */}
-            <span className="text-[12px] text-[#111B21]">{p.success} success</span>
-            <span className="text-[11px] text-[#667781]">• settle {p.settle}</span>
-            <span className="text-[11px] text-[#667781] ml-auto whitespace-nowrap">• {p.note}</span>
+            <span className="text-[12px] text-[#111B21]">{p.success} success rate</span>
           </div>
         ))}
       </div>

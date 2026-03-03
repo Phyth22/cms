@@ -18,7 +18,7 @@ interface SidebarProps {
 
 const DEFAULT_ITEMS: SidebarItem[] = [
   // ── Core dashboards ───────────────────────────────────────────────────────
-  { key: "aegis",              label: "Aegis Dashboard",         path: "/"                  },
+  { key: "aegis",              label: "Dashboard",         path: "/"                  },
   { key: "noc-bridge",         label: "NOC Bridge",              path: "/noc-bridge"        },
   { key: "protocol",           label: "Protocol Port",           path: "/protocol"          },
   { key: "firmware",           label: "Patch Orchestrator",      path: "/firmware"          },
@@ -58,8 +58,8 @@ const DEFAULT_TIP: SidebarTip = {
 };
 
 export function Sidebar({
-  title    = "System Health CMS",
-  subtitle = "SRE God View • Ops+Revenue",
+  title    = "System Core Console",
+  subtitle = "Primary Ops+Command Center",
   items    = DEFAULT_ITEMS,
   onSelect,
   tip      = DEFAULT_TIP,
