@@ -8,13 +8,14 @@
  *   BLADE:  Protocol Detail (4 tabs: Overview, Fields, Tests, Billing, Audit)
  *   MODAL:  New Protocol Mapping wizard (5 steps)
  */
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 
 // ─── Status colors ───────────────────────────────────────────────────────────
 const sBadge: Record<string, string> = {
   OK:    "bg-[#25D366]/15 text-[#25D366] border border-[#25D366]/30",
   WARN:  "bg-[#F97316]/15 text-[#F97316] border border-[#F97316]/30",
   ALARM: "bg-[#EF4444]/15 text-[#EF4444] border border-[#EF4444]/30",
+  OFF:   "bg-[#EF4444]/15 text-[#EF4444] border border-[#EF4444]/30",
 };
 const jobBadge: Record<string, string> = {
   Running:"border-[#128C7E] text-[#128C7E]",
@@ -94,6 +95,36 @@ export function ProtocolPage() {
   const [bladeOpen, setBladeOpen] = useState(false);
   const [bladeTab, setBladeTab] = useState("Overview");
   const [modalOpen, setModalOpen] = useState(false);
+  const [portData, setPortData] = useState<any>(null);
+  const [loadingPorts, setLoadingPorts] = useState(true);
+  const [selectedPort, setSelectedPort] = useState<string | null>(null);
+
+  // Port name mapping
+  const portNames: Record<string, string> = {
+    "3140": "Teltonika",
+    "3160": "BCE Xirgo",
+    "3170": "ET01",
+    "3139": "Wetrack2_GT06",
+  };
+
+  useEffect(() => {
+    const fetchPortActivity = async () => {
+      try {
+        setLoadingPorts(true);
+        const response = await fetch("https://narvas.3dservices.co.ug/ports/activity");
+        const data = await response.json();
+        setPortData(data.ports);
+      } catch (error) {
+        console.error("Failed to fetch port activity:", error);
+      } finally {
+        setLoadingPorts(false);
+      }
+    };
+
+    fetchPortActivity();
+    const interval = setInterval(fetchPortActivity, 600000); // Refresh every 10 minutes
+    return () => clearInterval(interval);
+  }, []);
 
   return (
     <div className="flex flex-1 min-h-0 min-w-0 overflow-hidden relative">
@@ -119,167 +150,182 @@ export function ProtocolPage() {
 
           {/* 4 KPIs */}
           <div className="grid grid-cols-4 gap-3">
-            <KpiCard label="Active Protocols" value="38"    badge="OK"    />
-            <KpiCard label="Parser Err Rate"  value="1.2%"  badge="WARN"  />
-            <KpiCard label="Unknown Msgs"     value="0.34%" badge="OK"    />
-            <KpiCard label="Decoder p95"      value="240ms" badge="ALARM" />
+            {loadingPorts ? (
+              <>
+                <KpiSkeleton />
+                <KpiSkeleton />
+                <KpiSkeleton />
+                <KpiSkeleton />
+              </>
+            ) : portData ? (
+              <>
+                <KpiCard label="Active Protocols" value={String(Object.values(portData).filter((p: any) => p.active).length)} badge="OK" />
+                <KpiCard label="Dormant Protocols" value={String(Object.values(portData).filter((p: any) => !p.active).length)} badge="WARN" />
+                <KpiCard label="Total Protocols" value={String(Object.keys(portData).length)} badge="OK" />
+                <KpiCard label="TT.Active Threads" value={String(Object.values(portData).reduce((sum: number, p: any) => sum + (p.tcp_threads || 0), 0))} badge="ALARM" />
+              </>
+            ) : null}
           </div>
 
           {/* Protocol Health Matrix */}
           <div className="bg-white border border-[#E9EDEF] rounded-xl overflow-hidden">
             <div className="px-4 py-3 border-b border-[#E9EDEF]">
               <div className="font-black text-[13px] text-[#111B21]">Protocol Health Matrix</div>
-              <div className="text-[11px] text-[#667781] mt-0.5">Throughput • schema drift • parser errors • ACK rate</div>
+              <div className="text-[11px] text-[#667781] mt-0.5">Throughput • schema drift • threading • Connections</div>
             </div>
             <div className="overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
             <table className="w-full text-[12px] min-w-[800px]">
               <thead><tr className="border-b border-[#E9EDEF] bg-[#F8FAFC]">
-                {["Protocol","Ver","Ingest msg/s","Parser Err","Unknown","ACK","Status"].map(h => (
+                {["Protocol","TCP Threads","Ingest Conns","Egress Conns","Data Ingress","Data Egress","Status"].map(h => (
                   <th key={h} className="text-left px-3 py-2 font-black text-[#667781]">{h}</th>
                 ))}
               </tr></thead>
               <tbody>
-                {PROTOCOLS.map(p => (
-                  <tr key={p.name} onClick={() => { setBladeOpen(true); setBladeTab("Overview"); }} className="border-b border-[#E9EDEF] last:border-0 hover:bg-[#F8FAFC] cursor-pointer">
-                    <td className="px-3 py-2.5 font-black text-[#111B21]">{p.name}</td>
-                    <td className="px-3 py-2.5 text-[#667781]">{p.ver}</td>
-                    <td className="px-3 py-2.5 text-[#111B21]">{p.ingest}</td>
-                    <td className="px-3 py-2.5 text-[#667781]">{p.err}</td>
-                    <td className="px-3 py-2.5 text-[#667781]">{p.unk}</td>
-                    <td className="px-3 py-2.5 text-[#667781]">{p.ack}</td>
-                    <td className="px-3 py-2.5"><span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-black ${sBadge[p.status]}`}>{p.status}</span></td>
-                  </tr>
-                ))}
+                {loadingPorts ? (
+                  <>
+                    <SkeletonRow />
+                    <SkeletonRow />
+                    <SkeletonRow />
+                    <SkeletonRow />
+                  </>
+                ) : portData ? (
+                  Object.entries(portData).map(([port, data]: [string, any]) => {
+                    const status = data.active ? "OK" : "OFF";
+                    return (
+                      <tr key={port} onClick={() => { setSelectedPort(port); setBladeOpen(true); setBladeTab("Overview"); }} className="border-b border-[#E9EDEF] last:border-0 hover:bg-[#F8FAFC] cursor-pointer">
+                        <td className="px-3 py-2.5 font-black text-[#111B21]">{portNames[port] || port}</td>
+                        <td className="px-3 py-2.5 text-[#667781]">{data.tcp_threads}</td>
+                        <td className="px-3 py-2.5 text-[#111B21]">{data.connections}</td>
+                        <td className="px-3 py-2.5 text-[#667781]">{data.outgoing_connections}</td>
+                        <td className="px-3 py-2.5 text-[#667781]">{data.bytes_recv_hr}</td>
+                        <td className="px-3 py-2.5 text-[#667781]">{data.bytes_sent_hr}</td>
+                        <td className="px-3 py-2.5"><span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-black ${sBadge[status]}`}>{status}</span></td>
+                      </tr>
+                    );
+                  })
+                ) : null}
               </tbody>
             </table>
             </div>
-          </div>
-
-          {/* Replay & Backfill Queue */}
-          <div className="bg-white border border-[#E9EDEF] rounded-xl overflow-hidden">
-            <div className="px-4 py-3 border-b border-[#E9EDEF] flex items-center justify-between">
-              <div>
-                <div className="font-black text-[13px] text-[#111B21]">Replay &amp; Backfill Queue</div>
-                <div className="text-[11px] text-[#667781] mt-0.5">Backfill jobs • replay windows • Kafka topic mapping</div>
-              </div>
-              <Pill>+ New Job</Pill>
-            </div>
-            <table className="w-full text-[12px]">
-              <thead><tr className="border-b border-[#E9EDEF]">
-                {["Job","Type","Topic","ETA","State"].map(h => (
-                  <th key={h} className="text-left px-3 py-2 font-black text-[#667781]">{h}</th>
-                ))}
-              </tr></thead>
-              <tbody>
-                {BACKFILL.map(b => (
-                  <tr key={b.job} className="border-b border-[#E9EDEF] last:border-0">
-                    <td className="px-3 py-2.5 font-black text-[#111B21]">{b.job}</td>
-                    <td className="px-3 py-2.5 text-[#667781]">{b.type}</td>
-                    <td className="px-3 py-2.5 text-[#667781]">{b.topic}</td>
-                    <td className="px-3 py-2.5 text-[#667781]">{b.eta}</td>
-                    <td className="px-3 py-2.5"><span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-black border ${jobBadge[b.state]}`}>{b.state}</span></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
           </div>
 
           {/* ════════════════════ MID SCROLL ════════════════════════════ */}
 
           {/* Decoder & Field Failures */}
           <div className="bg-white border border-[#E9EDEF] rounded-xl p-4">
-            <div className="font-black text-[13px] text-[#111B21]">Decoder &amp; Field Failures</div>
-            <div className="text-[11px] text-[#667781] mt-0.5 mb-3">Top failing fields • schema mismatch • time drift</div>
+            <div className="font-black text-[13px] text-[#111B21]">TCP Thread Metrics</div>
+            <div className="text-[11px] text-[#667781] mt-0.5 mb-3">Protocal TCP Threading Handling. Port Level</div>
             <div className="flex flex-col gap-3">
-              {FIELD_FAILURES.map(f => (
-                <div key={f.field} className="flex items-center gap-3 text-[12px]">
-                  <span className="w-[140px] shrink-0 text-[#111B21] font-mono">{f.field}</span>
-                  <div className="flex-1 h-5 bg-[#F0F2F5] rounded-full overflow-hidden">
-                    <div className={`h-full ${f.color} rounded-full`} style={{ width:`${f.pct}%` }} />
+              {loadingPorts ? (
+                <>
+                  <SkeletonMetricBar />
+                  <SkeletonMetricBar />
+                  <SkeletonMetricBar />
+                  <SkeletonMetricBar />
+                </>
+              ) : (
+                portData && Object.entries(portData).map(([port, data]: [string, any]) => (
+                  <div key={port} className="flex items-center gap-3 text-[12px]">
+                    <span className="w-[140px] shrink-0 text-[#111B21] font-mono">{portNames[port] || port}</span>
+                    <div className="flex-1 h-5 bg-[#F0F2F5] rounded-full overflow-hidden">
+                      <div 
+                        className="h-full bg-[#128C7E] rounded-full" 
+                        style={{ width: `${Math.min((data.tcp_threads / 100) * 100, 100)}%` }} 
+                      />
+                    </div>
+                    <span className="w-[40px] text-right font-black text-[#111B21]">{data.tcp_threads}</span>
                   </div>
-                  <span className="w-[40px] text-right font-black text-[#111B21]">{f.pct}%</span>
-                </div>
-              ))}
+                ))
+              )}
             </div>
           </div>
 
-          {/* Firmware Compatibility Matrix */}
-          <div className="bg-white border border-[#E9EDEF] rounded-xl overflow-hidden">
-            <div className="px-4 py-3 border-b border-[#E9EDEF]">
-              <div className="font-black text-[13px] text-[#111B21]">Firmware Compatibility Matrix</div>
-              <div className="text-[11px] text-[#667781] mt-0.5">Firmware → parser compatibility • rollout risk</div>
-            </div>
-            <div className="overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
-            <table className="w-full text-[12px] min-w-[700px]">
-              <thead><tr className="border-b border-[#E9EDEF]">
-                <th className="text-left px-3 py-2 font-black text-[#667781]" />
-                {FW_VERSIONS.map(v => <th key={v} className="text-center px-3 py-2 font-black text-[#667781]">{v}</th>)}
-              </tr></thead>
-              <tbody>
-                {Object.entries(FW_MATRIX).map(([proto, cells]) => (
-                  <tr key={proto} className="border-b border-[#E9EDEF] last:border-0">
-                    <td className="px-3 py-2.5 font-black text-[#111B21]">{proto}</td>
-                    {cells.map((c,i) => (
-                      <td key={i} className="px-3 py-2.5 text-center"><span className={`inline-block px-2 py-0.5 rounded text-[10px] font-black ${sBadge[c]}`}>{c}</span></td>
-                    ))}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            </div>
-          </div>
 
-          {/* ════════════════════ BOTTOM SCROLL ═════════════════════════ */}
 
-          {/* Integration Test Suite */}
+          {/* Tcp Connections */}
           <div className="bg-white border border-[#E9EDEF] rounded-xl p-4">
-            <div className="font-black text-[13px] text-[#111B21]">Integration Test Suite</div>
-            <div className="text-[11px] text-[#667781] mt-0.5 mb-3">Decoder regression • schema contracts • golden packets</div>
-            <div className="border border-[#E9EDEF] rounded-lg px-3 py-2.5 flex items-center justify-between text-[12px] mb-2">
-              <span className="text-[#111B21]">Last run: 02:14 UTC • 1,248 tests</span>
-              <span className="px-2 py-0.5 rounded-full border border-[#25D366]/30 bg-[#25D366]/15 text-[#25D366] text-[10px] font-black">PASS 97%</span>
-            </div>
-            <div className="border border-[#E9EDEF] rounded-lg px-3 py-2.5 flex items-center justify-between text-[12px]">
-              <span className="text-[#667781]">Failing: GT06 checksum edge-case • Ruptela temp_2</span>
-              <button className="h-7 px-3 rounded-lg bg-[#25D366] text-[#075E54] text-[11px] font-black border-none cursor-pointer">Run Tests</button>
-            </div>
-          </div>
-
-          {/* 2-col: Partner/OEM | ePayment hooks */}
-          <div className="grid grid-cols-2 gap-3">
-            <div className="bg-white border border-[#E9EDEF] rounded-xl p-4">
-              <div className="font-black text-[13px] text-[#111B21]">Partner / OEM Feed Health</div>
-              <div className="text-[11px] text-[#667781] mt-0.5 mb-3">OEM webhooks • SLA • throttling</div>
-              {PARTNERS.map(p => (
-                <div key={p.name} className="flex items-center justify-between mb-2.5 text-[12px]">
-                  <span className="flex items-center gap-2"><span className={`w-2.5 h-2.5 rounded-full ${p.dot} shrink-0`} /><span className="text-[#111B21]">{p.name}</span></span>
-                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-black ${sBadge[p.badge]}`}>{p.badge}</span>
-                </div>
-              ))}
-            </div>
-            <div className="bg-white border border-[#E9EDEF] rounded-xl p-4">
-              <div className="font-black text-[13px] text-[#111B21]">ePayment + Mobile Money Hooks</div>
-              <div className="text-[11px] text-[#667781] mt-0.5 mb-3">Shared callback infra • retries • reconciliation</div>
-              {EPAYMENTS.map(e => (
-                <div key={e.name} className="flex items-center justify-between mb-2.5 text-[12px]">
-                  <span className="flex items-center gap-2"><span className={`w-2.5 h-2.5 rounded-full ${e.dot} shrink-0`} /><span className="text-[#111B21]">{e.name}</span></span>
-                  <span className={`px-2 py-0.5 rounded-full text-[10px] font-black border ${e.badgeTone}`}>{e.badge}</span>
-                </div>
-              ))}
+            <div className="font-black text-[13px] text-[#111B21]">TCP Active Connection Metrics</div>
+            <div className="text-[11px] text-[#667781] mt-0.5 mb-3">Protocal TCP Connections Handling. Port Level</div>
+            <div className="flex flex-col gap-3">
+              {loadingPorts ? (
+                <>
+                  <SkeletonMetricBar />
+                  <SkeletonMetricBar />
+                  <SkeletonMetricBar />
+                  <SkeletonMetricBar />
+                </>
+              ) : (
+                portData && Object.entries(portData).map(([port, data]: [string, any]) => {
+                  const maxConnections = 600; // Scale reference
+                  const connPct = Math.min((data.connections / maxConnections) * 100, 100);
+                  const color = data.connections === 0 ? "bg-[#E9EDEF]" : data.connections > 300 ? "bg-[#EF4444]" : data.connections > 100 ? "bg-[#F97316]" : "bg-[#25D366]";
+                  return (
+                    <div key={port} className="flex items-center gap-3 text-[12px]">
+                      <span className="w-[140px] shrink-0 text-[#111B21] font-mono">{portNames[port] || port}</span>
+                      <div className="flex-1 h-5 bg-[#F0F2F5] rounded-full overflow-hidden">
+                        <div className={`h-full ${color} rounded-full`} style={{ width: `${connPct}%` }} />
+                      </div>
+                      <span className="w-[40px] text-right font-black text-[#111B21]">{data.connections}</span>
+                    </div>
+                  );
+                })
+              )}
             </div>
           </div>
 
-          {/* Metrics & Limits */}
+
+          {/* InGress Vs Egress Connections */}
           <div className="bg-white border border-[#E9EDEF] rounded-xl p-4">
-            <div className="font-black text-[13px] text-[#111B21]">Metrics &amp; Limits — What to Watch</div>
-            <div className="text-[11px] text-[#667781] mt-0.5 mb-3">Configurable thresholds (Warning/Alarm/Critical) • RBAC gated</div>
-            {METRICS.map(m => (
-              <div key={m.k} className="flex items-start gap-3 mb-2.5 text-[12px]">
-                <span className="w-2 h-2 rounded-full bg-[#25D366] mt-1 shrink-0" />
-                <span className="font-black text-[#111B21] w-[160px] shrink-0">{m.k}</span>
-                <span className="text-[#667781]">{m.v}</span>
+            <div className="font-black text-[13px] text-[#111B21]">TCP Egress Vs Ingress Metrics</div>
+            <div className="text-[11px] text-[#667781] mt-0.5 mb-3">Protocal TCP Egress, Ingress. Port Level</div>
+            <div className="flex flex-col gap-3">
+              {loadingPorts ? (
+                <>
+                  <SkeletonMetricBar />
+                  <SkeletonMetricBar />
+                  <SkeletonMetricBar />
+                  <SkeletonMetricBar />
+                </>
+              ) : (
+                portData && Object.entries(portData).map(([port, data]: [string, any]) => {
+                  const totalConns = data.connections || 1;
+                  const ingressConns = totalConns - data.outgoing_connections;
+                  const ingressPct = (ingressConns / totalConns) * 100;
+                  const egressPct = (data.outgoing_connections / totalConns) * 100;
+                  
+                  return (
+                    <div key={port} className="flex items-center gap-3 text-[12px]">
+                      <span className="w-[140px] shrink-0 text-[#111B21] font-mono">{portNames[port] || port}</span>
+                      <div className="flex-1 h-5 bg-[#F0F2F5] rounded-full overflow-hidden flex">
+                        <div 
+                          className="h-full bg-[#34B7F1]" 
+                          style={{ width: `${ingressPct}%` }} 
+                          title={`Ingress: ${ingressConns}`}
+                        />
+                        <div 
+                          className="h-full bg-[#F97316]" 
+                          style={{ width: `${egressPct}%` }} 
+                          title={`Egress: ${data.outgoing_connections}`}
+                        />
+                      </div>
+                      <span className="w-[50px] text-right font-black text-[#111B21] text-[11px]">
+                        {ingressConns}|{data.outgoing_connections}
+                      </span>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+            <div className="flex gap-4 mt-3 text-[10px] text-[#667781]">
+              <div className="flex items-center gap-1.5">
+                <div className="w-3 h-3 rounded-full bg-[#34B7F1]"></div>
+                <span>Ingress</span>
               </div>
-            ))}
+              <div className="flex items-center gap-1.5">
+                <div className="w-3 h-3 rounded-full bg-[#F97316]"></div>
+                <span>Egress</span>
+              </div>
+            </div>
           </div>
 
         </div>
@@ -293,81 +339,102 @@ export function ProtocolPage() {
             <div className="flex items-center justify-between px-5 py-3 border-b border-[#E9EDEF] shrink-0">
               <div>
                 <span className="text-[10px] font-black bg-[#128C7E] text-white px-2 py-0.5 rounded">BLADE</span>
-                <span className="font-black text-[14px] text-[#111B21] ml-2">Teltonika v2.8</span>
-                <div className="text-[10px] text-[#667781] mt-0.5">Blade: Overview → Billing Hooks → Audit</div>
+                <span className="font-black text-[14px] text-[#111B21] ml-2">{selectedPort ? portNames[selectedPort] || selectedPort : "Protocol"}</span>
+                <div className="text-[10px] text-[#667781] mt-0.5">Live data • {selectedPort && portData && portData[selectedPort]?.active ? "Active" : "Inactive"}</div>
               </div>
               <button onClick={() => setBladeOpen(false)} className="w-7 h-7 rounded-lg bg-[#F0F2F5] border border-[#E9EDEF] text-[#667781] font-black text-[13px] cursor-pointer grid place-items-center">✕</button>
             </div>
             {/* Tabs */}
             <div className="flex gap-1.5 px-4 py-2 border-b border-[#E9EDEF] shrink-0">
-              {["Overview","Fields","Tests","Billing","Audit"].map(t => (
+              {["Overview","Connections","Traffic","Technical"].map(t => (
                 <button key={t} onClick={() => setBladeTab(t)} className={`h-7 px-3 rounded-lg text-[11px] font-black cursor-pointer border ${bladeTab === t ? "bg-[#128C7E]/10 border-[#128C7E]/30 text-[#128C7E]" : "bg-white border-[#E9EDEF] text-[#667781]"}`}>{t}</button>
               ))}
             </div>
             <div className="flex-1 overflow-y-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden px-5 py-4">
-              {bladeTab === "Overview" && <>
-                <BSection title="Registry">
+              {bladeTab === "Overview" && selectedPort && portData && portData[selectedPort] && <>
+                <BSection title="Status & Activity">
                   <div className="p-4 text-[12px] text-[#111B21] leading-relaxed">
-                    <div>Kafka topic: navas.teltonika</div>
-                    <div>ACK success: 99% • time drift: 0.4s</div>
-                    <div>Decoder p95: 190ms • errors: 0.8%</div>
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="font-black">Status:</span>
+                      <span className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-black ${sBadge[portData[selectedPort].active ? "OK" : "OFF"]}`}>
+                        {portData[selectedPort].active ? "ACTIVE" : "OFFLINE"}
+                      </span>
+                    </div>
+                    <div>Script: <span className="font-mono text-[#667781]">{portData[selectedPort].script}</span></div>
+                    <div>Port: <span className="font-mono text-[#667781]">{selectedPort}</span></div>
                   </div>
                 </BSection>
-                <BSection title="Billing Hooks (Token Engine)">
+                <BSection title="Thread Information">
                   <div className="p-4 text-[12px] text-[#111B21] leading-relaxed">
-                    <div>Usage event topic: usage_events</div>
-                    <div>Token scope: Type A (Telematics) — ingest/parse</div>
-                    <div>FIFO queue: per-asset, auto-rollover</div>
-                    <div className="mt-2 bg-[#25D366]/15 border border-[#25D366]/30 rounded-lg px-3 py-2 text-[11px] font-black text-[#128C7E]">Mask UI when out-of-token: ON</div>
-                    <div className="mt-1.5 bg-[#FEF3C7] border border-[#FBBF24]/30 rounded-lg px-3 py-2 text-[11px] font-black text-[#F97316]">High-risk: pricing/metering changes require HITL</div>
-                  </div>
-                </BSection>
-                <BSection title="Deploy Parser Update">
-                  <div className="p-4 text-[12px] text-[#111B21] leading-relaxed">
-                    <div>Change: v2.8 → v2.8.1 (checksum fix)</div>
-                    <div>Impact: reduces unknown msg rate (GT06 parity)</div>
-                    <div className="mt-2 bg-[#FEF3C7] border border-[#FBBF24]/30 rounded-lg px-3 py-2 text-[11px] font-black text-[#F97316]">HITL Required: Add approval note + reviewer</div>
-                    <div className="flex gap-2 mt-2">
-                      <button className="h-7 px-4 rounded-lg bg-[#25D366] text-[#075E54] text-[11px] font-black border-none cursor-pointer">Request Approval</button>
-                      <Pill>Dry Run</Pill>
+                    <div>TCP Threads: <span className="font-black text-[#128C7E]">{portData[selectedPort].tcp_threads}</span></div>
+                    <div className="mt-2 h-3 bg-[#F0F2F5] rounded-full overflow-hidden">
+                      <div className="h-full bg-[#128C7E]" style={{ width: `${Math.min((portData[selectedPort].tcp_threads / 100) * 100, 100)}%` }}></div>
                     </div>
                   </div>
                 </BSection>
-                <BSection title="Audit Trail">
+              </>}
+              {bladeTab === "Connections" && selectedPort && portData && portData[selectedPort] && <>
+                <BSection title="Connection Statistics">
+                  <div className="p-4 text-[12px] text-[#111B21] leading-relaxed">
+                    <div className="flex items-center justify-between mb-3">
+                      <span>Total Connections:</span>
+                      <span className="font-black text-[18px]">{portData[selectedPort].connections}</span>
+                    </div>
+                    <div className="flex items-center justify-between mb-3">
+                      <span>Ingest (Incoming):</span>
+                      <span className="font-black text-[18px] text-[#34B7F1]">{(portData[selectedPort].connections || 0) - (portData[selectedPort].outgoing_connections || 0)}</span>
+                    </div>
+                    <div className="flex items-center justify-between">
+                      <span>Egress (Outgoing):</span>
+                      <span className="font-black text-[18px] text-[#F97316]">{portData[selectedPort].outgoing_connections}</span>
+                    </div>
+                  </div>
+                </BSection>
+                <BSection title="Remote Endpoints">
                   <div className="p-4">
-                    {BLADE_AUDIT.map((a,i) => (
-                      <div key={i} className="flex items-center justify-between mb-2 text-[12px]">
-                        <span className="flex items-center gap-2">
-                          <span className="font-mono text-[#667781] w-[36px]">{a.time}</span>
-                          <span className="font-black text-[#111B21]">{a.action}</span>
-                        </span>
-                        <span className="text-[#667781]">{a.actor}</span>
+                    {portData[selectedPort].remote_endpoints && portData[selectedPort].remote_endpoints.length > 0 ? (
+                      <div className="text-[11px] space-y-1 max-h-[600px] overflow-y-auto">
+                        {portData[selectedPort].remote_endpoints.map((ep: any, i: number) => (
+                          <div key={i} className="font-mono text-[#667781] p-1 bg-[#F8FAFC] rounded">
+                            {ep.remote_ip}:{ep.remote_port}
+                          </div>
+                        ))}
                       </div>
-                    ))}
+                    ) : (
+                      <div className="text-[12px] text-[#667781]">No remote endpoints</div>
+                    )}
                   </div>
                 </BSection>
               </>}
-              {bladeTab === "Billing" && <>
-                <BSection title="Registry">
+              {bladeTab === "Traffic" && selectedPort && portData && portData[selectedPort] && <>
+                <BSection title="Data Transfer">
                   <div className="p-4 text-[12px] text-[#111B21] leading-relaxed">
-                    <div>Kafka topic: navas.teltonika</div>
-                    <div>ACK success: 99% • time drift: 0.4s</div>
-                    <div>Decoder p95: 190ms • errors: 0.8%</div>
-                  </div>
-                </BSection>
-                <BSection title="Billing Hooks (Token Engine)">
-                  <div className="p-4 text-[12px] text-[#111B21] leading-relaxed">
-                    <div>Usage event topic: usage_events</div>
-                    <div>Token scope: Type A (Telematics) — ingest/parse</div>
-                    <div>FIFO queue: per-asset, auto-rollover</div>
-                    <div className="mt-2 bg-[#25D366]/15 border border-[#25D366]/30 rounded-lg px-3 py-2 text-[11px] font-black text-[#128C7E]">Mask UI when out-of-token: ON</div>
-                    <div className="mt-1.5 bg-[#FEF3C7] border border-[#FBBF24]/30 rounded-lg px-3 py-2 text-[11px] font-black text-[#F97316]">High-risk: pricing/metering changes require HITL</div>
+                    <div className="mb-4">
+                      <div className="flex items-center justify-between mb-1">
+                        <span>Bytes Received (Ingress):</span>
+                        <span className="font-black text-[#34B7F1]">{portData[selectedPort].bytes_recv_hr}</span>
+                      </div>
+                      <div className="text-[11px] text-[#667781]">{portData[selectedPort].bytes_recv.toLocaleString()} bytes</div>
+                    </div>
+                    <div>
+                      <div className="flex items-center justify-between mb-1">
+                        <span>Bytes Sent (Egress):</span>
+                        <span className="font-black text-[#F97316]">{portData[selectedPort].bytes_sent_hr}</span>
+                      </div>
+                      <div className="text-[11px] text-[#667781]">{portData[selectedPort].bytes_sent.toLocaleString()} bytes</div>
+                    </div>
                   </div>
                 </BSection>
               </>}
-              {(bladeTab === "Fields" || bladeTab === "Tests" || bladeTab === "Audit") && (
-                <div className="text-[12px] text-[#667781] p-4 text-center border border-[#E9EDEF] rounded-xl">{bladeTab} detail view — parser fields, regression tests, or full audit chain</div>
-              )}
+              {bladeTab === "Technical" && selectedPort && portData && portData[selectedPort] && <>
+                <BSection title="Raw API Response">
+                  <div className="p-4">
+                    <pre className="text-[10px] font-mono bg-[#F8FAFC] p-3 rounded overflow-x-auto max-h-[400px] overflow-y-auto text-[#111B21]">
+                      {JSON.stringify(portData[selectedPort], null, 2)}
+                    </pre>
+                  </div>
+                </BSection>
+              </>}
             </div>
           </>
         ) : (
@@ -486,6 +553,39 @@ const pillStyles: Record<string, string> = {
   green: "bg-[#25D366] text-[#075E54]",
   ghost: "bg-white border border-[#E9EDEF] text-[#667781]",
 };
+
+function KpiSkeleton() {
+  return (
+    <div className="bg-white border border-[#E9EDEF] rounded-xl p-3 animate-pulse">
+      <div className="h-3 bg-[#E9EDEF] rounded w-16 mb-2"></div>
+      <div className="h-7 bg-[#E9EDEF] rounded w-24 mt-2"></div>
+    </div>
+  );
+}
+
+function SkeletonRow() {
+  return (
+    <tr className="border-b border-[#E9EDEF] last:border-0 animate-pulse">
+      {[...Array(7)].map((_, i) => (
+        <td key={i} className="px-3 py-2.5">
+          <div className="h-4 bg-[#E9EDEF] rounded w-20"></div>
+        </td>
+      ))}
+    </tr>
+  );
+}
+
+function SkeletonMetricBar() {
+  return (
+    <div className="flex items-center gap-3 animate-pulse">
+      <div className="w-[140px] h-4 bg-[#E9EDEF] rounded shrink-0"></div>
+      <div className="flex-1 h-5 bg-[#E9EDEF] rounded-full"></div>
+      <div className="w-[40px] h-4 bg-[#E9EDEF] rounded"></div>
+    </div>
+  );
+}
+
+
 
 function Pill({ color = "ghost", onClick, children }: { color?: string; onClick?: () => void; children: React.ReactNode }) {
   return <button onClick={onClick} className={`h-7 px-3 rounded-full text-[11px] font-black border-none cursor-pointer hover:brightness-105 active:opacity-85 transition-all whitespace-nowrap ${pillStyles[color] ?? pillStyles.ghost}`}>{children}</button>;
