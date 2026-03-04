@@ -16,4 +16,7 @@ export const ENDPOINTS = {
   STATISTICS: {
     SIMS_SUMMARY: "/statistics/sims/summary",
   },
+  METRICS: {
+    SERVER: "/metrics/server",
+  },
 } as const;

@@ -7,10 +7,12 @@
  *
  * All styles use Tailwind utility classes only.
  */
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import type{ HitlAction, Severity } from "../../../types";
 import { Kpi, Card, Bar, MiniGateway, MiniStat } from "../../../components/ui";
 import { TaskManagerModal } from "./TaskManagerModal";
+import { getServerMetrics } from "../../../api";
+import type { ServerMetrics } from "../../../api";
 
 // ── Severity helpers ─────────────────────────────────────────────────────────
 const sevDot: Record<Severity, string> = {
@@ -62,6 +64,24 @@ export function Dashboard() {
   const [showTaskManager, setShowTaskManager] = useState(false);
   const hitl = useMemo(() => DEFAULT_HITL, []);
 
+  // ── Server metrics from API ──────────────────────────────────────────────
+  const [metrics, setMetrics] = useState<ServerMetrics | null>(null);
+  const [metricsLoading, setMetricsLoading] = useState(true);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    getServerMetrics({ signal: controller.signal })
+      .then((data) => {
+        setMetrics(data);
+        setMetricsLoading(false);
+      })
+      .catch((err) => {
+        if (err instanceof DOMException && err.name === "AbortError") return;
+        setMetricsLoading(false);
+      });
+    return () => controller.abort();
+  }, []);
+
   return (
     <>
       {/* ── Workspace ─────────────────────────────────────────────────── */}
@@ -83,7 +103,7 @@ export function Dashboard() {
           {/* Blade header */}
           <div className="relative h-[42px] flex items-center px-3.5 gap-2.5 border-b border-[#E9EDEF] shrink-0">
             <span className="absolute left-0 top-0 bottom-0 w-1 bg-[#128C7E] rounded-tl-xl" />
-            <span className="font-extrabold text-[#111B21] text-[13px]">System Health — God View</span>
+            <span className="font-extrabold text-[#111B21] text-[13px]">System Health </span>
             <span className="ml-auto text-[11px] text-[#667781]">refresh 30s</span>
           </div>
 
@@ -99,11 +119,10 @@ export function Dashboard() {
             </div>
 
             {/* Compute */}
-            <Card title="Compute & System Resource Usage" subtitle="Percentages (cluster)">
-              <Bar label="CPU"        pct={0.63} meta="63% (🟡>70 🟠>85 🔴>95)"  />
-              <Bar label="RAM Free"   pct={0.18} meta="18% (🟡<20 🟠<10 🔴<5)"  warn />
-              <Bar label="Disk Free"  pct={0.24} meta="24% (🟡<20 🟠<10 🔴<5)"  />
-              <Bar label="Net Errors" pct={0.07} meta="0.7% (🟡>1 🟠>3 🔴>5)"   />
+            <Card title="Compute & System Resource Usage" subtitle={metricsLoading ? "Loading…" : metrics ? `${metrics.hostname} • window ${metrics.window_sec}s` : "Percentages (cluster)"}>
+              <Bar label="CPU"       pct={metrics ? metrics.system.cpu_percent / 100 : 0}                          meta={metrics ? `${metrics.system.cpu_percent}%` : "—"} />
+              <Bar label="RAM Used"  pct={metrics ? metrics.system.memory_percent / 100 : 0}                       meta={metrics ? `${metrics.system.memory_percent}%` : "—"} warn={metrics ? metrics.system.memory_percent > 80 : false} />
+              <Bar label="Disk Used" pct={metrics ? metrics.system.disk_space_root_percent / 100 : 0}              meta={metrics ? `${metrics.system.disk_space_root_percent}%` : "—"} />
               <div className="flex flex-wrap gap-2 mt-1">
                 <Btn variant="azure" onClick={() => setShowTaskManager(true)}>Open Task Manager</Btn>
               </div>
@@ -247,7 +266,7 @@ export function Dashboard() {
         </section>
       </main>
 
-      {showTaskManager && <TaskManagerModal onClose={() => setShowTaskManager(false)} />}
+      {showTaskManager && <TaskManagerModal onClose={() => setShowTaskManager(false)} metrics={metrics} />}
     </>
   );
 }

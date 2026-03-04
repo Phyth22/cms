@@ -10,7 +10,7 @@ export { ApiError } from "./types";
 export type { ApiResponse, RequestOptions } from "./types";
 
 // HTTP verbs (for custom one-off calls)
-export { get, post, put, patch, del } from "./client";
+export { get, getRaw, post, put, patch, del } from "./client";
 
 // Central endpoint registry
 export { ENDPOINTS } from "./endpoints";
@@ -22,9 +22,14 @@ export type {
   CreateSimCardResponse,
   SimCard,
   SimStatistics,
+  DiskDevice,
+  SupervisorProcess,
+  SystemdService,
+  ServerMetrics,
 } from "./types";
 
 // ── Domain services ──────────────────────────────────────────────────────────
 
 export { createSimCard, getAllSimCards } from "./services/simcards.service";
 export { getSimStatistics } from "./services/statistics.service";
+export { getServerMetrics } from "./services/metrics.service";

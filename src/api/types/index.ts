@@ -8,3 +8,10 @@ export type {
 } from "./simcards.types";
 
 export type { SimStatistics } from "./statistics.types";
+
+export type {
+  DiskDevice,
+  SupervisorProcess,
+  SystemdService,
+  ServerMetrics,
+} from "./metrics.types";

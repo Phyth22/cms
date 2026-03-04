@@ -8,7 +8,7 @@
  *  - Generic ApiResponse<T> envelope parsing
  *  - Consistent error handling via ApiError
  *
- * Public surface:  get · post · put · patch · del
+ * Public surface:  get · getRaw · post · put · patch · del
  */
 
 import type { ApiResponse, RequestOptions } from "./types";
@@ -28,17 +28,16 @@ function getAuthToken(): string | null {
   return null;
 }
 
-// ── Internal request handler ─────────────────────────────────────────────────
+// ── Shared fetch logic ───────────────────────────────────────────────────────
 
-async function request<T>(
+async function baseFetch(
   method: string,
   path: string,
   body?: unknown,
   opts: RequestOptions = {},
-): Promise<ApiResponse<T>> {
+): Promise<Response> {
   const { params, headers: extraHeaders, ...fetchOpts } = opts;
 
-  // Build URL with optional query params
   const url = new URL(path, BASE_URL);
   if (params) {
     for (const [key, value] of Object.entries(params)) {
@@ -46,7 +45,6 @@ async function request<T>(
     }
   }
 
-  // Headers
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     ...(extraHeaders as Record<string, string>),
@@ -57,15 +55,24 @@ async function request<T>(
     headers["Authorization"] = `Bearer ${token}`;
   }
 
-  // Fetch
-  const response = await fetch(url.toString(), {
+  return fetch(url.toString(), {
     method,
     headers,
     body: body != null ? JSON.stringify(body) : undefined,
     ...fetchOpts,
   });
+}
 
-  // Parse JSON (even error responses may contain useful info)
+// ── Envelope request (expects { data, message, status }) ─────────────────────
+
+async function request<T>(
+  method: string,
+  path: string,
+  body?: unknown,
+  opts: RequestOptions = {},
+): Promise<ApiResponse<T>> {
+  const response = await baseFetch(method, path, body, opts);
+
   let json: ApiResponse<T>;
   try {
     json = await response.json();
@@ -77,7 +84,6 @@ async function request<T>(
     );
   }
 
-  // HTTP-level error
   if (!response.ok) {
     throw new ApiError(
       json.message ?? `${method} ${path} failed`,
@@ -87,7 +93,6 @@ async function request<T>(
     );
   }
 
-  // API-level error (HTTP 200 but status !== "success")
   if (json.status !== "success") {
     throw new ApiError(
       json.message ?? "Request failed",
@@ -100,10 +105,51 @@ async function request<T>(
   return json;
 }
 
+// ── Raw request (no envelope) ────────────────────────────────────────────────
+
+/**
+ * Returns the JSON body directly without expecting the
+ * `{ data, message, status }` envelope.
+ * Use for endpoints that return raw payloads (e.g. /metrics/server).
+ */
+async function requestRaw<T>(
+  method: string,
+  path: string,
+  body?: unknown,
+  opts: RequestOptions = {},
+): Promise<T> {
+  const response = await baseFetch(method, path, body, opts);
+
+  let json: T;
+  try {
+    json = await response.json();
+  } catch {
+    throw new ApiError(
+      `${method} ${path} — failed to parse response`,
+      response.status,
+      response.statusText,
+    );
+  }
+
+  if (!response.ok) {
+    throw new ApiError(
+      `${method} ${path} failed`,
+      response.status,
+      response.statusText,
+    );
+  }
+
+  return json;
+}
+
 // ── Public helpers ───────────────────────────────────────────────────────────
 
 export function get<T>(path: string, opts?: RequestOptions) {
   return request<T>("GET", path, undefined, opts);
+}
+
+export function getRaw<T>(path: string, opts?: RequestOptions) {
+  return requestRaw<T>("GET", path, undefined, opts);
 }
 
 export function post<T>(path: string, body: unknown, opts?: RequestOptions) {
