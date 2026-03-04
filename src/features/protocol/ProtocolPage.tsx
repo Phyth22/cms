@@ -160,9 +160,9 @@ export function ProtocolPage() {
             ) : portData ? (
               <>
                 <KpiCard label="Active Protocols" value={String(Object.values(portData).filter((p: any) => p.active).length)} badge="OK" />
-                <KpiCard label="Dormant Protocols" value={String(Object.values(portData).filter((p: any) => !p.active).length)} badge="WARN" />
+                <KpiCard label="Dormant Protocols" value={String(Object.values(portData).filter((p: any) => !p.active).length)} badge="OFF" />
                 <KpiCard label="Total Protocols" value={String(Object.keys(portData).length)} badge="OK" />
-                <KpiCard label="TT.Active Threads" value={String(Object.values(portData).reduce((sum: number, p: any) => sum + (p.tcp_threads || 0), 0))} badge="ALARM" />
+                <KpiCard label="TT.Active Threads" value={String(Object.values(portData).reduce((sum: number, p: any) => sum + (p.tcp_threads || 0), 0))} badge="OK" />
               </>
             ) : null}
           </div>
@@ -288,10 +288,11 @@ export function ProtocolPage() {
                 </>
               ) : (
                 portData && Object.entries(portData).map(([port, data]: [string, any]) => {
-                  const totalConns = data.connections || 1;
-                  const ingressConns = totalConns - data.outgoing_connections;
-                  const ingressPct = (ingressConns / totalConns) * 100;
-                  const egressPct = (data.outgoing_connections / totalConns) * 100;
+                  const ingressCount = data.connections || 0;
+                  const egressCount = data.outgoing_connections || 0;
+                  const totalConns = ingressCount + egressCount || 1;
+                  const ingressPct = (ingressCount / totalConns) * 100;
+                  const egressPct = (egressCount / totalConns) * 100;
                   
                   return (
                     <div key={port} className="flex items-center gap-3 text-[12px]">
@@ -300,16 +301,16 @@ export function ProtocolPage() {
                         <div 
                           className="h-full bg-[#34B7F1]" 
                           style={{ width: `${ingressPct}%` }} 
-                          title={`Ingress: ${ingressConns}`}
+                          title={`Ingress: ${ingressCount}`}
                         />
                         <div 
                           className="h-full bg-[#F97316]" 
                           style={{ width: `${egressPct}%` }} 
-                          title={`Egress: ${data.outgoing_connections}`}
+                          title={`Egress: ${egressCount}`}
                         />
                       </div>
                       <span className="w-[50px] text-right font-black text-[#111B21] text-[11px]">
-                        {ingressConns}|{data.outgoing_connections}
+                        {ingressCount}|{egressCount}
                       </span>
                     </div>
                   );
