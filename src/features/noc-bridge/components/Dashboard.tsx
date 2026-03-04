@@ -11,8 +11,9 @@ import React, { useEffect, useMemo, useState } from "react";
 import type{ HitlAction, Severity } from "../../../types";
 import { Kpi, Card, Bar, MiniGateway, MiniStat } from "../../../components/ui";
 import { TaskManagerModal } from "./TaskManagerModal";
-import { getServerMetrics } from "../../../api";
-import type { ServerMetrics } from "../../../api";
+import { GatewayHistoryModal } from "./GatewayHistoryModal";
+import { getServerMetrics, getApiPerformance, getMobileMoneyGateways, getVebaStatistics } from "../../../api";
+import type { ServerMetrics, ApiPerformanceMetrics, Gateway, VebaStatistics } from "../../../api";
 
 // ── Severity helpers ─────────────────────────────────────────────────────────
 const sevDot: Record<Severity, string> = {
@@ -51,22 +52,35 @@ const DEFAULT_HITL: HitlAction[] = [
 ];
 
 // ── VEBA table rows ──────────────────────────────────────────────────────────
-const VEBA_ROWS = [
-  { flag: "🔴", entity: "KLA_BODA_POOL", signal: "Leakage ×17",      action: "Gate contact unlock"  },
-  { flag: "🟠", entity: "OLIWA_CORP_UG",  signal: "Escrow ∆ 3.1M",   action: "Notify + escrow hold" },
-  { flag: "🟡", entity: "PIKI_KLA_POOL",  signal: "Settle delay 22m", action: "Retry STK push"       },
-];
+// const VEBA_ROWS = [
+//   { flag: "🔴", entity: "KLA_BODA_POOL", signal: "Leakage ×17",      action: "Gate contact unlock"  },
+//   { flag: "🟠", entity: "OLIWA_CORP_UG",  signal: "Escrow ∆ 3.1M",   action: "Notify + escrow hold" },
+//   { flag: "🟡", entity: "PIKI_KLA_POOL",  signal: "Settle delay 22m", action: "Retry STK push"       },
+// ];
 
 // Shared grid for VEBA table
-const TABLE_GRID = "grid grid-cols-[50px_1.4fr_1fr_1.8fr_32px] gap-2 items-center";
+// const TABLE_GRID = "grid grid-cols-[50px_1.4fr_1fr_1.8fr_32px] gap-2 items-center";
 
 export function Dashboard() {
   const [showTaskManager, setShowTaskManager] = useState(false);
+  const [showGatewayHistory, setShowGatewayHistory] = useState(false);
   const hitl = useMemo(() => DEFAULT_HITL, []);
 
   // ── Server metrics from API ──────────────────────────────────────────────
   const [metrics, setMetrics] = useState<ServerMetrics | null>(null);
   const [metricsLoading, setMetricsLoading] = useState(true);
+
+  // ── API performance metrics ────────────────────────────────────────────
+  const [perf, setPerf] = useState<ApiPerformanceMetrics | null>(null);
+  const [perfLoading, setPerfLoading] = useState(true);
+
+  // ── Gateway status ────────────────────────────────────────────────────
+  const [gateways, setGateways] = useState<Gateway[]>([]);
+  const [gatewaysLoading, setGatewaysLoading] = useState(true);
+
+  // ── VEBA statistics ─────────────────────────────────────────────────
+  const [veba, setVeba] = useState<VebaStatistics | null>(null);
+  const [vebaLoading, setVebaLoading] = useState(true);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -78,6 +92,33 @@ export function Dashboard() {
       .catch((err) => {
         if (err instanceof DOMException && err.name === "AbortError") return;
         setMetricsLoading(false);
+      });
+    getApiPerformance({ signal: controller.signal })
+      .then((data) => {
+        setPerf(data);
+        setPerfLoading(false);
+      })
+      .catch((err) => {
+        if (err instanceof DOMException && err.name === "AbortError") return;
+        setPerfLoading(false);
+      });
+    getMobileMoneyGateways({ signal: controller.signal })
+      .then((data) => {
+        setGateways(data.gateways);
+        setGatewaysLoading(false);
+      })
+      .catch((err) => {
+        if (err instanceof DOMException && err.name === "AbortError") return;
+        setGatewaysLoading(false);
+      });
+    getVebaStatistics({ signal: controller.signal })
+      .then((data) => {
+        setVeba(data);
+        setVebaLoading(false);
+      })
+      .catch((err) => {
+        if (err instanceof DOMException && err.name === "AbortError") return;
+        setVebaLoading(false);
       });
     return () => controller.abort();
   }, []);
@@ -112,10 +153,30 @@ export function Dashboard() {
 
             {/* KPI grid — 1 col on xs, 2 col on sm+ */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              <Kpi title="Uptime (30d)"    value="99.82%"    sub="p95 API 320ms • 5xx 0.7%"   sev="green"   />
-              <Kpi title="Ingest p95"      value="22s"       sub="Drop est 0.04% • dup 0.21%" sev="warning" />
-              <Kpi title="Kafka lag"       value="4.8s"      sub="URP 0 • brokers disk 61%"   sev="green"   />
-              <Kpi title="Token Burn (ops)" value="1.7 Tok/s" sub="Retry storms +0.3 Tok/s"   sev="alarm"   />
+              <Kpi
+                title="Uptime (30d)"
+                value={perfLoading || !perf ? "—" : `${perf.uptime.percentage_30d}%`}
+                sub={perfLoading || !perf ? "Loading…" : `p95 ${perf.api_latency.p95_ms.toFixed(0)}ms • 5xx ${perf.error_rates.error_5xx_rate_percent}%`}
+                sev={!perf ? "green" : perf.uptime.percentage_30d >= 99.5 ? "green" : perf.uptime.percentage_30d >= 99 ? "warning" : "alarm"}
+              />
+              <Kpi
+                title="API Latency p95"
+                value={perfLoading || !perf ? "—" : `${perf.api_latency.p95_ms.toFixed(0)}ms`}
+                sub={perfLoading || !perf ? "Loading…" : `p50 ${perf.api_latency.p50_ms.toFixed(0)}ms • p99 ${perf.api_latency.p99_ms.toFixed(0)}ms`}
+                sev={!perf ? "green" : perf.api_latency.p95_ms < 500 ? "green" : perf.api_latency.p95_ms < 1000 ? "warning" : "alarm"}
+              />
+              <Kpi
+                title="Kafka Lag"
+                value={perfLoading || !perf ? "—" : perf.kafka.consumer_lag.total_lag.toLocaleString()}
+                sub={perfLoading || !perf ? "Loading…" : `group: ${perf.kafka.consumer_lag.consumer_group} • ${Object.keys(perf.kafka.consumer_lag.by_topic).length} topics`}
+                sev={!perf ? "green" : perf.kafka.consumer_lag.total_lag < 500 ? "green" : perf.kafka.consumer_lag.total_lag < 1000 ? "warning" : "alarm"}
+              />
+              <Kpi
+                title="Request Rate"
+                value={perfLoading || !perf ? "—" : `${perf.request_rates.requests_per_second.toFixed(1)} req/s`}
+                sub={perfLoading || !perf ? "Loading…" : `${perf.error_rates.total_requests.toLocaleString()} total • ${perf.error_rates.success_rate_percent}% success`}
+                sev={!perf ? "green" : perf.error_rates.error_5xx_rate_percent < 1 ? "green" : perf.error_rates.error_5xx_rate_percent < 3 ? "warning" : "alarm"}
+              />
             </div>
 
             {/* Compute */}
@@ -129,30 +190,31 @@ export function Dashboard() {
             </Card>
 
             {/* Payments */}
-            <Card title="Payments & Mobile Money Gateways" subtitle="Real-time status • webhook backlog">
+            <Card title="Payments & Mobile Money Gateways" subtitle={gatewaysLoading ? "Loading…" : `Real-time status • ${gateways.length} gateways`}>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                <MiniGateway name="M-Pesa KE"   status="OK"       meta="success 98.9% • p95 9.2s"           sev="green" />
-                <MiniGateway name="MTN MoMo UG" status="OK"       meta="success 97.6% • p95 11.4s"          sev="green" />
-                <MiniGateway name="Airtel UG"   status="DEGRADED" meta="success 91.2% • webhook fail 6.7%"  sev="alarm" />
-                <MiniGateway name="Airtel KE"   status="OK"       meta="success 96.8% • settle delay 18m"   sev="green" />
+                {gatewaysLoading
+                  ? <span className="text-[11px] text-[#667781] col-span-2">Loading gateways…</span>
+                  : gateways.map((gw) => (
+                    <MiniGateway key={gw.id} name={gw.name} status={gw.status} meta={gw.meta} sev={gw.sev} />
+                  ))
+                }
               </div>
               <div className="flex flex-wrap gap-2 mt-1">
-                <Btn variant="azure">View retries</Btn>
-                <Btn variant="green">+ New webhook rule</Btn>
-                <Btn variant="azure">Export recon</Btn>
+                <Btn variant="azure" onClick={() => setShowGatewayHistory(true)}>View retries</Btn>
+                {/* <Btn variant="green">+ New webhook rule</Btn>
+                <Btn variant="azure">Export recon</Btn> */}
               </div>
             </Card>
 
             {/* VEBA */}
-            <Card title="VEBA Governance • Leakage Prevention" subtitle="Listings + tendering + escrow">
+            <Card title="VEBA Governance • Leakage Prevention" subtitle={vebaLoading ? "Loading…" : "Listings + tendering"}>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                <MiniStat label="Bookings today"   value="184"       />
-                <MiniStat label="Leakage attempts" value="17"        />
-                <MiniStat label="Escrow balance"   value="UGX 42.8M" />
-                <MiniStat label="Settlement p95"   value="18m"       />
+                <MiniStat label="Bookings today"   value={vebaLoading || !veba ? "—" : veba.bookings_today.toLocaleString()} />
+                <MiniStat label="Leakage attempts" value={vebaLoading || !veba ? "—" : veba.leakage_attempts.toLocaleString()} />
+                <MiniStat label="Settlement p95"   value={vebaLoading || !veba ? "—" : veba.settlement_p95} />
               </div>
 
-              {/* Scrollable table wrapper */}
+              {/* Scrollable table wrapper
               <div className="border border-[#E9EDEF] rounded-xl overflow-hidden overflow-x-auto">
                 <div className={`${TABLE_GRID} px-2.5 py-2 bg-[#F8F9FA] text-[11px] text-[#667781] font-extrabold`}>
                   <div>Flag</div><div>Entity</div><div>Signal</div><div>Suggested action</div><div>⋮</div>
@@ -166,12 +228,12 @@ export function Dashboard() {
                     <div>⋯</div>
                   </div>
                 ))}
-              </div>
+              </div> */}
 
-              <div className="flex flex-wrap gap-2 mt-1">
+              {/* <div className="flex flex-wrap gap-2 mt-1">
                 <Btn variant="azure">View all flags</Btn>
                 <Btn variant="green">+ New leakage rule</Btn>
-              </div>
+              </div> */}
             </Card>
           </div>
         </section>
@@ -267,6 +329,7 @@ export function Dashboard() {
       </main>
 
       {showTaskManager && <TaskManagerModal onClose={() => setShowTaskManager(false)} metrics={metrics} />}
+      {showGatewayHistory && <GatewayHistoryModal onClose={() => setShowGatewayHistory(false)} gateways={gateways} />}
     </>
   );
 }

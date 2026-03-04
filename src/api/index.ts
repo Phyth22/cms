@@ -22,14 +22,24 @@ export type {
   CreateSimCardResponse,
   SimCard,
   SimStatistics,
+  ApiPerformanceMetrics,
   DiskDevice,
   SupervisorProcess,
   SystemdService,
   ServerMetrics,
+  Gateway,
+  GatewaysResponse,
+  GatewayHistoryEntry,
+  GatewayHistoryResponse,
+  UpdateGatewayRequest,
+  UpdateGatewayResponse,
+  VebaStatistics,
 } from "./types";
 
 // ── Domain services ──────────────────────────────────────────────────────────
 
 export { createSimCard, getAllSimCards } from "./services/simcards.service";
 export { getSimStatistics } from "./services/statistics.service";
-export { getServerMetrics } from "./services/metrics.service";
+export { getServerMetrics, getApiPerformance } from "./services/metrics.service";
+export { getMobileMoneyGateways, getGatewayHistory, updateGatewayStatus } from "./services/gateways.service";
+export { getVebaStatistics } from "./services/veba.service";

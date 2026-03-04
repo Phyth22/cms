@@ -17,6 +17,15 @@ export const ENDPOINTS = {
     SIMS_SUMMARY: "/statistics/sims/summary",
   },
   METRICS: {
-    SERVER: "/metrics/server",
+    SERVER:          "/metrics/server",
+    API_PERFORMANCE: "/metrics/api/performance",
+  },
+  GATEWAYS: {
+    MOBILE_MONEY:     "/gateways/mobile-money",
+    MOBILE_MONEY_BY:  "/gateways/mobile-money",   // append /{telecom_name}
+    UPDATE:           "/gateways/mobile-money/update",
+  },
+  VEBA: {
+    STATISTICS: "/veba/statistics",
   },
 } as const;
