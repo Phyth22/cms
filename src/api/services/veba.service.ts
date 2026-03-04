@@ -6,5 +6,5 @@ import type { VebaStatistics } from "../types";
 export function getVebaStatistics(
   opts?: RequestOptions,
 ): Promise<VebaStatistics> {
-  return get<VebaStatistics>(ENDPOINTS.VEBA.STATISTICS, opts);
+  return get<VebaStatistics>(ENDPOINTS.VEBA.STATISTICS, opts).then(res => res.data);
 }

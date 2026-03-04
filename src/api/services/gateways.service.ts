@@ -11,7 +11,7 @@ import type {
 export function getMobileMoneyGateways(
   opts?: RequestOptions,
 ): Promise<GatewaysResponse> {
-  return get<GatewaysResponse>(ENDPOINTS.GATEWAYS.MOBILE_MONEY, opts);
+  return get<GatewaysResponse>(ENDPOINTS.GATEWAYS.MOBILE_MONEY, opts).then(res => res.data);
 }
 
 export function getGatewayHistory(
@@ -22,7 +22,7 @@ export function getGatewayHistory(
   return get<GatewayHistoryResponse>(
     `${ENDPOINTS.GATEWAYS.MOBILE_MONEY_BY}/${encoded}`,
     opts,
-  );
+  ).then(res => res.data);
 }
 
 export function updateGatewayStatus(
@@ -33,5 +33,5 @@ export function updateGatewayStatus(
     ENDPOINTS.GATEWAYS.UPDATE,
     payload,
     opts,
-  );
+  ).then(res => res.data);
 }

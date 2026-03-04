@@ -86,7 +86,7 @@ export function Dashboard() {
     const controller = new AbortController();
     getServerMetrics({ signal: controller.signal })
       .then((data) => {
-        setMetrics(data);
+        setMetrics(data || null);
         setMetricsLoading(false);
       })
       .catch((err) => {
@@ -95,7 +95,7 @@ export function Dashboard() {
       });
     getApiPerformance({ signal: controller.signal })
       .then((data) => {
-        setPerf(data);
+        setPerf(data || null);
         setPerfLoading(false);
       })
       .catch((err) => {
@@ -104,7 +104,7 @@ export function Dashboard() {
       });
     getMobileMoneyGateways({ signal: controller.signal })
       .then((data) => {
-        setGateways(data.gateways);
+        setGateways(data.gateways || []);
         setGatewaysLoading(false);
       })
       .catch((err) => {
@@ -113,7 +113,7 @@ export function Dashboard() {
       });
     getVebaStatistics({ signal: controller.signal })
       .then((data) => {
-        setVeba(data);
+        setVeba(data || null);
         setVebaLoading(false);
       })
       .catch((err) => {
@@ -155,35 +155,35 @@ export function Dashboard() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <Kpi
                 title="Uptime (30d)"
-                value={perfLoading || !perf ? "—" : `${perf.uptime.percentage_30d}%`}
-                sub={perfLoading || !perf ? "Loading…" : `p95 ${perf.api_latency.p95_ms.toFixed(0)}ms • 5xx ${perf.error_rates.error_5xx_rate_percent}%`}
-                sev={!perf ? "green" : perf.uptime.percentage_30d >= 99.5 ? "green" : perf.uptime.percentage_30d >= 99 ? "warning" : "alarm"}
+                value={perfLoading || !perf || !perf.uptime?.percentage_30d ? "—" : `${perf.uptime.percentage_30d}%`}
+                sub={perfLoading || !perf || !perf.api_latency?.p95_ms || !perf.error_rates?.error_5xx_rate_percent ? "Loading…" : `p95 ${perf.api_latency.p95_ms.toFixed(0)}ms • 5xx ${perf.error_rates.error_5xx_rate_percent}%`}
+                sev={!perf || !perf.uptime?.percentage_30d ? "green" : perf.uptime.percentage_30d >= 99.5 ? "green" : perf.uptime.percentage_30d >= 99 ? "warning" : "alarm"}
               />
               <Kpi
                 title="API Latency p95"
-                value={perfLoading || !perf ? "—" : `${perf.api_latency.p95_ms.toFixed(0)}ms`}
-                sub={perfLoading || !perf ? "Loading…" : `p50 ${perf.api_latency.p50_ms.toFixed(0)}ms • p99 ${perf.api_latency.p99_ms.toFixed(0)}ms`}
-                sev={!perf ? "green" : perf.api_latency.p95_ms < 500 ? "green" : perf.api_latency.p95_ms < 1000 ? "warning" : "alarm"}
+                value={perfLoading || !perf || !perf.api_latency?.p95_ms ? "—" : `${perf.api_latency.p95_ms.toFixed(0)}ms`}
+                sub={perfLoading || !perf || !perf.api_latency?.p50_ms || !perf.api_latency?.p99_ms ? "Loading…" : `p50 ${perf.api_latency.p50_ms.toFixed(0)}ms • p99 ${perf.api_latency.p99_ms.toFixed(0)}ms`}
+                sev={!perf || !perf.api_latency?.p95_ms ? "green" : perf.api_latency.p95_ms < 500 ? "green" : perf.api_latency.p95_ms < 1000 ? "warning" : "alarm"}
               />
               <Kpi
                 title="Kafka Lag"
-                value={perfLoading || !perf ? "—" : perf.kafka.consumer_lag.total_lag.toLocaleString()}
-                sub={perfLoading || !perf ? "Loading…" : `group: ${perf.kafka.consumer_lag.consumer_group} • ${Object.keys(perf.kafka.consumer_lag.by_topic).length} topics`}
-                sev={!perf ? "green" : perf.kafka.consumer_lag.total_lag < 500 ? "green" : perf.kafka.consumer_lag.total_lag < 1000 ? "warning" : "alarm"}
+                value={perfLoading || !perf || !perf.kafka?.consumer_lag?.total_lag ? "—" : perf.kafka.consumer_lag.total_lag.toLocaleString()}
+                sub={perfLoading || !perf || !perf.kafka?.consumer_lag ? "Loading…" : `group: ${perf.kafka.consumer_lag.consumer_group || '—'} • ${Object.keys(perf.kafka.consumer_lag.by_topic || {}).length} topics`}
+                sev={!perf || !perf.kafka?.consumer_lag?.total_lag ? "green" : perf.kafka.consumer_lag.total_lag < 500 ? "green" : perf.kafka.consumer_lag.total_lag < 1000 ? "warning" : "alarm"}
               />
               <Kpi
                 title="Request Rate"
-                value={perfLoading || !perf ? "—" : `${perf.request_rates.requests_per_second.toFixed(1)} req/s`}
-                sub={perfLoading || !perf ? "Loading…" : `${perf.error_rates.total_requests.toLocaleString()} total • ${perf.error_rates.success_rate_percent}% success`}
-                sev={!perf ? "green" : perf.error_rates.error_5xx_rate_percent < 1 ? "green" : perf.error_rates.error_5xx_rate_percent < 3 ? "warning" : "alarm"}
+                value={perfLoading || !perf || !perf.request_rates?.requests_per_second ? "—" : `${perf.request_rates.requests_per_second.toFixed(1)} req/s`}
+                sub={perfLoading || !perf || !perf.error_rates?.total_requests || !perf.error_rates?.success_rate_percent ? "Loading…" : `${perf.error_rates.total_requests.toLocaleString()} total • ${perf.error_rates.success_rate_percent}% success`}
+                sev={!perf || !perf.error_rates?.error_5xx_rate_percent ? "green" : perf.error_rates.error_5xx_rate_percent < 1 ? "green" : perf.error_rates.error_5xx_rate_percent < 3 ? "warning" : "alarm"}
               />
             </div>
 
             {/* Compute */}
-            <Card title="Compute & System Resource Usage" subtitle={metricsLoading ? "Loading…" : metrics ? `${metrics.hostname} • window ${metrics.window_sec}s` : "Percentages (cluster)"}>
-              <Bar label="CPU"       pct={metrics ? metrics.system.cpu_percent / 100 : 0}                          meta={metrics ? `${metrics.system.cpu_percent}%` : "—"} />
-              <Bar label="RAM Used"  pct={metrics ? metrics.system.memory_percent / 100 : 0}                       meta={metrics ? `${metrics.system.memory_percent}%` : "—"} warn={metrics ? metrics.system.memory_percent > 80 : false} />
-              <Bar label="Disk Used" pct={metrics ? metrics.system.disk_space_root_percent / 100 : 0}              meta={metrics ? `${metrics.system.disk_space_root_percent}%` : "—"} />
+            <Card title="Compute & System Resource Usage" subtitle={metricsLoading ? "Loading…" : metrics && metrics.hostname && metrics.window_sec ? `${metrics.hostname} • window ${metrics.window_sec}s` : "Percentages (cluster)"}>
+              <Bar label="CPU"       pct={metrics && metrics.system ? metrics.system.cpu_percent / 100 : 0}                          meta={metrics && metrics.system ? `${metrics.system.cpu_percent}%` : "—"} />
+              <Bar label="RAM Used"  pct={metrics && metrics.system ? metrics.system.memory_percent / 100 : 0}                       meta={metrics && metrics.system ? `${metrics.system.memory_percent}%` : "—"} warn={metrics && metrics.system ? metrics.system.memory_percent > 80 : false} />
+              <Bar label="Disk Used" pct={metrics && metrics.system ? metrics.system.disk_space_root_percent / 100 : 0}              meta={metrics && metrics.system ? `${metrics.system.disk_space_root_percent}%` : "—"} />
               <div className="flex flex-wrap gap-2 mt-1">
                 <Btn variant="azure" onClick={() => setShowTaskManager(true)}>Open Task Manager</Btn>
               </div>
@@ -209,9 +209,9 @@ export function Dashboard() {
             {/* VEBA */}
             <Card title="VEBA Governance • Leakage Prevention" subtitle={vebaLoading ? "Loading…" : "Listings + tendering"}>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                <MiniStat label="Bookings today"   value={vebaLoading || !veba ? "—" : veba.bookings_today.toLocaleString()} />
-                <MiniStat label="Leakage attempts" value={vebaLoading || !veba ? "—" : veba.leakage_attempts.toLocaleString()} />
-                <MiniStat label="Settlement p95"   value={vebaLoading || !veba ? "—" : veba.settlement_p95} />
+                <MiniStat label="Bookings today"   value={vebaLoading || !veba || !veba.bookings_today ? "—" : veba.bookings_today.toLocaleString()} />
+                <MiniStat label="Leakage attempts" value={vebaLoading || !veba || !veba.leakage_attempts ? "—" : veba.leakage_attempts.toLocaleString()} />
+                <MiniStat label="Settlement p95"   value={vebaLoading || !veba || !veba.settlement_p95 ? "—" : veba.settlement_p95} />
               </div>
 
               {/* Scrollable table wrapper
