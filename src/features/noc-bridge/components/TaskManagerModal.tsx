@@ -35,7 +35,18 @@ export function TaskManagerModal({ onClose, metrics }: TaskManagerModalProps) {
       pid: s.pid,
     }));
 
-    return [...supervisor, ...systemd];
+    const gunicorn = metrics.processes.gunicorn
+      ? Object.entries(metrics.processes.gunicorn).map(([label, g]) => ({
+          name: `gunicorn (${label.replace("gunicorn:", "PID ")})`,
+          status: g.status || "running",
+          cpu: g.cpu_percent.toFixed(1),
+          mem: g.mem_percent.toFixed(2),
+          rss: g.rss_MB.toFixed(0),
+          pid: g.pid,
+        }))
+      : [];
+
+    return [...supervisor, ...systemd, ...gunicorn];
   }, [metrics]);
 
   const summary = useMemo(() => {

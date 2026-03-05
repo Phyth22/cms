@@ -7,13 +7,21 @@
  *   BOTTOM: Audit Trail → Policy Violations → Odoo ERP Sync
  *   MODAL:  Right blade — Create Tenant / Sub-Org (tabs: Basics, Billing, Modules, RBAC, Review)
  */
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
+import { getTenantKpis, getAllTenants, getTenantWallet, getUsageEvents, getApprovals, approveRequest, rejectRequest, getAuditTrail, saveDraft, requestDraftApproval, submitApprovedDraft } from "../../api";
+import type { TenantKpis, Tenant, TenantWallet, UsageEvent, Approval, AuditTrailEntry, TenantTier } from "../../api";
+import { TrashRestoreModal } from "./components/TrashRestoreModal";
+import { ImportTenantsModal } from "./components/ImportTenantsModal";
+import { CreateSubOrgModal } from "./components/CreateSubOrgModal";
+import { TopUpModal } from "./components/TopUpModal";
+import { AllocateModal } from "./components/AllocateModal";
+import { MintModal } from "./components/MintModal";
 
 // ─── Colour helpers ──────────────────────────────────────────────────────────
 const okBg   = "bg-[#25D366] text-[#053B33]";
 const alarmBg= "bg-[#F97316] text-white";
 const critBg = "bg-[#EF4444] text-white";
-const darkBg = "bg-[#075E54] text-white";
+// const darkBg = "bg-[#075E54] text-white";
 
 function healthBar(pct: number) {
   const c = pct >= 95 ? "bg-[#25D366]" : pct >= 90 ? "bg-[#FBBF24]" : pct >= 85 ? "bg-[#F97316]" : "bg-[#EF4444]";
@@ -21,43 +29,13 @@ function healthBar(pct: number) {
 }
 
 // ─── Mock Data ───────────────────────────────────────────────────────────────
-const TENANTS = [
-  { tier:"TOP",    name:"3D SERVICES (TOP)",            ctry:"UG", ccy:"UGX", health:99, burn:"—",   veba:true  },
-  { tier:"DEAL",   name:"Kampala Dealer Rights",        ctry:"UG", ccy:"UGX", health:96, burn:"1.8", veba:false },
-  { tier:"CLIENT", name:"Nairobi Logistics Client",     ctry:"KE", ccy:"KES", health:93, burn:"4.4", veba:true  },
-  { tier:"ORG",    name:"Kampala_Boda_Fleet (ORG)",     ctry:"UG", ccy:"UGX", health:88, burn:"8.6", veba:true, selected:true },
-  { tier:"ORG",    name:"Mombasa_Reefer_Coldchain",     ctry:"KE", ccy:"KES", health:91, burn:"3.2", veba:true  },
-  { tier:"ORG",    name:"Kisumu_Construction_Rentals",   ctry:"KE", ccy:"KES", health:84, burn:"9.8", veba:true  },
-  { tier:"ORG",    name:"Gulu_Schools_Patrol",          ctry:"UG", ccy:"UGX", health:97, burn:"1.1", veba:false },
-];
 
-const USAGE = [
-  { topic:"usage_events", type:"token.burn",       tenant:"Kampala_Boda_Fleet",   action:"Video snapshot",      tokens:"12.0", cost:"High", guard:"HITL: off"  },
-  { topic:"usage_events", type:"payment.webhook",  tenant:"Kampala_Boda_Fleet",   action:"MTN callback retry",  tokens:"0.0",  cost:"Low",  guard:"Auto"       },
-  { topic:"usage_events", type:"veba.booking",     tenant:"Kisumu_Construction",  action:"Escrow lock",         tokens:"4.5",  cost:"Med",  guard:"HITL: on"   },
-  { topic:"usage_events", type:"token.burn",       tenant:"Nairobi Logistics",    action:"Route optimization",  tokens:"1.6",  cost:"Med",  guard:"Cap: 80%"   },
-  { topic:"usage_events", type:"ai.inference",     tenant:"Kampala_Boda_Fleet",   action:"Leakage intent scan", tokens:"0.9",  cost:"Med",  guard:"Local SLM"  },
-];
-
-const APPROVALS = [
-  { title:"Enable VEBA escrow mode",       tenant:"Kisumu_Construction_Rentals", meta:"Requested by: finance@…",  req:"HITL required" },
-  { title:"Mint 1,000 tokens (dispute credit)", tenant:"Kampala_Boda_Fleet",     meta:"Requested by: support@…",  req:"HIC required"  },
-  { title:"Suspend account (60+ overdue)", tenant:"Nairobi Logistics Client",    meta:"Dunning stage: 4",         req:"HIC required"  },
-];
-
-const AUDIT_TRAIL = [
-  { ts:"10:21:14", tag:"RBAC", tagCls:"text-[#128C7E]", title:"Denied cross-tenant access attempt",      who:"user=ops@…"               },
-  { ts:"10:20:02", tag:"PAY",  tagCls:"text-[#128C7E]", title:"MTN webhook retry queued",                who:"tenant=Kampala_Boda"      },
-  { ts:"10:18:45", tag:"TOK",  tagCls:"text-[#128C7E]", title:"Burn cap reached (80%) — soft alert",     who:"tenant=Kisumu_Construct"  },
-  { ts:"10:16:07", tag:"VEBA", tagCls:"text-[#128C7E]", title:"Leakage guard blocked phone number share",who:"chat_id=…"                },
-];
-
-const VIOLATIONS = [
-  { icon:"⚠", title:"Hierarchy depth > 3 levels",               detail:"2 tenants (review recommended)"   },
-  { icon:"⚠", title:"Template drift: non-standard RBAC roles",  detail:"Kampala_Boda_Fleet"               },
-  { icon:"⚠", title:"FX mismatch: effective price deviates > 3%",detail:"Kisumu_Construction_Rentals"     },
-  { icon:"💡", title:"Opportunity: bundle recommendation available",detail:"Nairobi Logistics Client"      },
-];
+// const VIOLATIONS = [
+//   { icon:"⚠", title:"Hierarchy depth > 3 levels",               detail:"2 tenants (review recommended)"   },
+//   { icon:"⚠", title:"Template drift: non-standard RBAC roles",  detail:"Kampala_Boda_Fleet"               },
+//   { icon:"⚠", title:"FX mismatch: effective price deviates > 3%",detail:"Kisumu_Construction_Rentals"     },
+//   { icon:"💡", title:"Opportunity: bundle recommendation available",detail:"Nairobi Logistics Client"      },
+// ];
 
 const MODAL_TABS = ["Basics","Billing & Tokens","Modules","RBAC","Review"];
 
@@ -65,6 +43,283 @@ const MODAL_TABS = ["Basics","Billing & Tokens","Modules","RBAC","Review"];
 export function TenantTowerPage() {
   const [bladeOpen, setBladeOpen] = useState(false);
   const [bladeTab, setBladeTab] = useState("Basics");
+  const [trashOpen, setTrashOpen] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
+  const [subOrgOpen, setSubOrgOpen] = useState(false);
+  const [topUpOpen, setTopUpOpen] = useState(false);
+  const [allocateOpen, setAllocateOpen] = useState(false);
+  const [mintOpen, setMintOpen] = useState(false);
+  const [kpis, setKpis] = useState<TenantKpis | null>(null);
+  const [tenants, setTenants] = useState<Tenant[]>([]);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [usageEvents, setUsageEvents] = useState<UsageEvent[]>([]);
+  const [approvals, setApprovals] = useState<Approval[]>([]);
+  const [auditTrail, setAuditTrail] = useState<AuditTrailEntry[]>([]);
+  const [approvalsLoading, setApprovalsLoading] = useState(true);
+
+  useEffect(() => {
+    getTenantKpis()
+      .then((res) => setKpis(res.data))
+      .catch(() => {});
+    getUsageEvents()
+      .then((res) => setUsageEvents(res.data))
+      .catch(() => {});
+    getApprovals()
+      .then((res) => setApprovals(res.data))
+      .catch(() => {})
+      .finally(() => setApprovalsLoading(false));
+    getAuditTrail()
+      .then((res) => setAuditTrail(res.data))
+      .catch(() => {});
+    getAllTenants()
+      .then((res) => {
+        setTenants(res.data);
+        if (res.data.length > 0) setSelectedId(res.data[0].id);
+      })
+      .catch(() => {});
+  }, []);
+
+  const [wallet, setWallet] = useState<TenantWallet | null>(null);
+
+  useEffect(() => {
+    if (!selectedId) return;
+    let cancelled = false;
+    getTenantWallet(selectedId)
+      .then((res) => { if (!cancelled) setWallet(res.data); })
+      .catch(() => { if (!cancelled) setWallet(null); });
+    return () => { cancelled = true; setWallet(null); };
+  }, [selectedId]);
+
+  const [actioningId, setActioningId] = useState<string | null>(null);
+  const [bladeDraftId, setBladeDraftId] = useState<string | null>(null);
+  const [bladeApprovalStatus, setBladeApprovalStatus] = useState<string | null>(null);
+
+  function refreshApprovals() {
+    setApprovalsLoading(true);
+    getApprovals()
+      .then((res) => setApprovals(res.data))
+      .catch(() => {})
+      .finally(() => setApprovalsLoading(false));
+  }
+
+  /** After approve/reject, check if the actioned item was a tenant_onboarding linked to the open blade draft */
+  function syncBladeAfterAction(actionedId: string, newStatus: "approved" | "rejected") {
+    const match = approvals.find((a) => a.id === actionedId);
+    if (match?.type === "tenant_onboarding" && match.draft_id && match.draft_id === bladeDraftId) {
+      setBladeApprovalStatus(newStatus);
+    }
+  }
+
+  function handleApprove(id: string) {
+    if (!confirm("Approve this request? For mint requests, tokens will be credited immediately.")) return;
+    setActioningId(id);
+    approveRequest(id)
+      .then(() => {
+        syncBladeAfterAction(id, "approved");
+        refreshApprovals();
+        refreshWallet();
+      })
+      .catch(() => alert("Failed to approve"))
+      .finally(() => setActioningId(null));
+  }
+
+  function handleReject(id: string) {
+    if (!confirm("Reject this request? This action cannot be undone.")) return;
+    setActioningId(id);
+    rejectRequest(id)
+      .then(() => {
+        syncBladeAfterAction(id, "rejected");
+        refreshApprovals();
+      })
+      .catch(() => alert("Failed to reject"))
+      .finally(() => setActioningId(null));
+  }
+
+  // ── Blade form state ─────────────────────────────────────────────────────
+  // Basics
+  const [bladeName, setBladeName] = useState("");
+  const [bladeTier, setBladeTier] = useState<TenantTier>("ORG");
+  const [bladeParent, setBladeParent] = useState<string | null>(null);
+  const [bladeCountry, setBladeCountry] = useState("UG");
+  const [bladeCurrency, setBladeCurrency] = useState("UGX");
+  const [bladeTimezone, setBladeTimezone] = useState("Africa/Kampala");
+  // Billing & Tokens
+  const [bladePlan, setBladePlan] = useState("OLIWA-PLUS");
+  const [bladeRetention, setBladeRetention] = useState("90");
+  const [bladeDailyCap, setBladeDailyCap] = useState("300000");
+  const [bladeChannels, setBladeChannels] = useState<Record<string, boolean>>({
+    "M-Pesa": true, "MTN MoMo": true, "Airtel Money": true, "Pesapal Cards": true, "Flutterwave": false,
+  });
+  // Modules
+  const [bladeModules, setBladeModules] = useState<Record<string, boolean>>({
+    "OLIWA Tracking": true, "PIKI (Motorcycle)": false, "VEBA Marketplace": true,
+    "AI Console (Waswa)": true, "Messaging Portal (WhatsApp/SMS)": true,
+    "Video Telematics": false, "Fuel & Sensors": true,
+  });
+  // RBAC
+  const [bladeRoles, setBladeRoles] = useState<Record<string, boolean>>({
+    "System Admin": true, "Fleet Manager": false, "Finance": false,
+    "Read-Only Observer": false, "VEBA Ops": false, "Driver (mobile-only)": false,
+  });
+  // Submit
+  const [bladeSubmitting, setBladeSubmitting] = useState(false);
+  const [bladeResult, setBladeResult] = useState<{ ok: boolean; msg: string } | null>(null);
+
+  function resetBladeForm() {
+    setBladeName(""); setBladeTier("ORG"); setBladeParent(null);
+    setBladeCountry("UG"); setBladeCurrency("UGX"); setBladeTimezone("Africa/Kampala");
+    setBladePlan("OLIWA-PLUS"); setBladeRetention("90"); setBladeDailyCap("300000");
+    setBladeChannels({ "M-Pesa": true, "MTN MoMo": true, "Airtel Money": true, "Pesapal Cards": true, "Flutterwave": false });
+    setBladeModules({ "OLIWA Tracking": true, "PIKI (Motorcycle)": false, "VEBA Marketplace": true, "AI Console (Waswa)": true, "Messaging Portal (WhatsApp/SMS)": true, "Video Telematics": false, "Fuel & Sensors": true });
+    setBladeRoles({ "System Admin": true, "Fleet Manager": false, "Finance": false, "Read-Only Observer": false, "VEBA Ops": false, "Driver (mobile-only)": false });
+    setBladeResult(null);
+    setBladeDraftId(null);
+    setBladeApprovalStatus(null);
+  }
+
+  function bladePayload() {
+    return {
+      name: bladeName.trim(),
+      tier: bladeTier,
+      parent_id: bladeParent,
+      country: bladeCountry,
+      currency: bladeCurrency,
+      timezone: bladeTimezone,
+      billing_plan: bladePlan,
+      retention_days: parseInt(bladeRetention, 10),
+      daily_token_cap: parseInt(bladeDailyCap, 10) || 300000,
+      topup_channels: bladeChannels,
+      modules: bladeModules,
+      roles: bladeRoles,
+      ...(bladeDraftId ? { draft_id: bladeDraftId } : {}),
+    };
+  }
+
+  /** Save Draft — persists form to dll_tenant_drafts */
+  function handleSaveDraft() {
+    if (!bladeName.trim()) { alert("Tenant name is required"); return; }
+    setBladeSubmitting(true);
+    setBladeResult(null);
+    saveDraft(bladePayload())
+      .then((res) => {
+        setBladeDraftId(res.data.draft_id);
+        setBladeApprovalStatus(res.data.status);
+        setBladeResult({ ok: true, msg: `Draft saved (${res.data.draft_id})` });
+      })
+      .catch((err) => {
+        setBladeResult({ ok: false, msg: err?.message || "Failed to save draft" });
+      })
+      .finally(() => setBladeSubmitting(false));
+  }
+
+  /** Request HITL Approval — sends draft to admin queue */
+  function handleRequestApproval() {
+    if (!bladeDraftId) {
+      // Auto-save draft first, then request approval
+      if (!bladeName.trim()) { alert("Tenant name is required"); return; }
+      setBladeSubmitting(true);
+      setBladeResult(null);
+      saveDraft(bladePayload())
+        .then((res) => {
+          setBladeDraftId(res.data.draft_id);
+          return requestDraftApproval(res.data.draft_id);
+        })
+        .then((res) => {
+          setBladeApprovalStatus(res.data.status);
+          setBladeResult({ ok: true, msg: `Approval requested — awaiting admin review (${res.data.approval_id})` });
+          refreshApprovals();
+        })
+        .catch((err) => {
+          setBladeResult({ ok: false, msg: err?.message || "Failed to request approval" });
+        })
+        .finally(() => setBladeSubmitting(false));
+      return;
+    }
+    setBladeSubmitting(true);
+    setBladeResult(null);
+    requestDraftApproval(bladeDraftId)
+      .then((res) => {
+        setBladeApprovalStatus(res.data.status);
+        setBladeResult({ ok: true, msg: `Approval requested — awaiting admin review (${res.data.approval_id})` });
+        refreshApprovals();
+      })
+      .catch((err) => {
+        setBladeResult({ ok: false, msg: err?.message || "Failed to request approval" });
+      })
+      .finally(() => setBladeSubmitting(false));
+  }
+
+  /** Submit (after approval) — creates actual tenant from approved draft */
+  function handleBladeSubmit() {
+    if (!bladeDraftId) {
+      alert("Please save a draft and request approval first.");
+      return;
+    }
+    if (bladeApprovalStatus !== "approved") {
+      alert("This draft must be approved by admin before submitting. Use 'Request HITL Approval' first.");
+      return;
+    }
+    setBladeSubmitting(true);
+    setBladeResult(null);
+    submitApprovedDraft(bladeDraftId)
+      .then((res) => {
+        setBladeResult({ ok: true, msg: `Tenant created (ID: ${res.data.tenant_id})` });
+        getAllTenants()
+          .then((r) => { setTenants(r.data); if (r.data.length > 0 && !selectedId) setSelectedId(r.data[0].id); })
+          .catch(() => {});
+        setTimeout(() => { setBladeOpen(false); resetBladeForm(); }, 1500);
+      })
+      .catch((err) => {
+        setBladeResult({ ok: false, msg: err?.message || "Failed to submit" });
+      })
+      .finally(() => setBladeSubmitting(false));
+  }
+
+  const [filterTier, setFilterTier] = useState<string>("ALL");
+  const [filterOpen, setFilterOpen] = useState(false);
+
+  const filteredTenants = filterTier === "ALL"
+    ? tenants
+    : tenants.filter((t) => t.tier === filterTier);
+
+  const selectedTenant = tenants.find((t) => t.id === selectedId) ?? null;
+
+  function exportUsageCsv() {
+    const rows = [["Topic","Type","Tenant","Action","Tokens","Cost","Guardrail","Timestamp"]];
+    usageEvents.forEach((e) => {
+      rows.push([e.topic, e.type, e.tenant, e.action, String(e.tokens), e.cost, e.guardrail, e.timestamp]);
+    });
+    const csv = rows.map((r) => r.join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "usage_events.csv";
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function refreshWallet() {
+    if (!selectedId) return;
+    getTenantWallet(selectedId)
+      .then((res) => setWallet(res.data))
+      .catch(() => {});
+  }
+
+  function exportCsv() {
+    const rows = [["Tier","Tenant","Country","Currency","Health","Burn/s","VEBA"]];
+    filteredTenants.forEach((t) => {
+      rows.push([t.tier, t.name, t.country, t.currency, String(t.health), t.burn_rate, t.veba ? "ON" : "OFF"]);
+    });
+    const csv = rows.map((r) => r.join(",")).join("\n");
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "tenant_hierarchy.csv";
+    a.click();
+    URL.revokeObjectURL(url);
+  }
 
   return (
     <div className="flex flex-1 min-h-0 min-w-0 overflow-hidden relative">
@@ -77,35 +332,40 @@ export function TenantTowerPage() {
             <div className="flex items-center gap-3 flex-wrap">
               <div className="font-black text-[16px] text-[#111B21]">Tenant Tower</div>
               <div className="text-[11px] text-[#667781]">Dealer → Client → Org • hard isolation enforced</div>
-              <div className="ml-auto flex items-center gap-2 flex-wrap">
+              {/* <div className="ml-auto flex items-center gap-2 flex-wrap">
                 <span className="text-[11px] text-[#667781]">Tenant: ALL ▾</span>
                 <span className={`text-[11px] font-black px-3 py-1 rounded-full ${darkBg}`}>RBAC: SYSTEM ADMIN</span>
                 <span className="text-[11px] text-[#667781]">Tokens: 12.4M • Burn 22.1/s</span>
                 <span className="text-[11px] text-[#667781]">Health: Kafka 1.2s • Redis 98%</span>
                 <span className={`text-[11px] font-black px-3 py-1 rounded-full ${okBg}`}>Waswa</span>
-              </div>
+              </div> */}
             </div>
           </div>
 
           {/* ── Quick Actions ──────────────────────────────────────────────────── */}
           <div className="bg-white border border-[#E9EDEF] rounded-xl px-4 py-2.5 flex items-center gap-3">
             <span className="font-black text-[13px] text-[#111B21] mr-2">Quick Actions</span>
-            <Pill color="green" onClick={() => setBladeOpen(true)}>+ New Tenant</Pill>
-            <Pill onClick={() => setBladeOpen(true)}>Create Sub-Org</Pill>
-            <Pill>Import</Pill>
-            <Pill color="alarm">Trash/Restore</Pill>
+            <Pill color="green" onClick={() => { resetBladeForm(); setBladeTab("Basics"); setBladeOpen(true); }}>+ New Tenant</Pill>
+            <Pill onClick={() => setSubOrgOpen(true)}>Create Sub-Org</Pill>
+            <Pill onClick={() => setImportOpen(true)}>Import</Pill>
+            <Pill color="alarm" onClick={() => setTrashOpen(true)}>Trash/Restore</Pill>
           </div>
 
           {/* ════════════════════ TOP SCROLL ════════════════════════════════════ */}
 
           {/* ── 4 KPI Cards ──────────────────────────────────────────────────── */}
           <div className="grid grid-cols-4 gap-3">
-            {[
-              { label:"Total Accounts", value:"1,248",       sub:"Δ +12 this week"            },
-              { label:"Active Units",   value:"84,210",      sub:"Online 91% • Offline 9%"    },
-              { label:"Token Exposure (24h)", value:"UGX 12.8M", sub:"Run-out < 72h: 14 tenants" },
-              { label:"Payment Success (24h)",value:"96.2%",     sub:"p95 latency 7.8s"         },
-            ].map(k => (
+            {(kpis ? [
+              { label:"Total Accounts", value:kpis.total_accounts.toLocaleString(),       sub:`Δ +${kpis.accounts_delta_week} this week`            },
+              { label:"Active Units",   value:kpis.active_units.toLocaleString(),          sub:`Online ${kpis.online_pct}% • Offline ${100 - kpis.online_pct}%`    },
+              { label:"Token Exposure (24h)", value:`${kpis.token_exposure_currency} ${(kpis.token_exposure_24h / 1_000_000).toFixed(1)}M`, sub:`Run-out < 72h: ${kpis.runout_72h_count} tenants` },
+              { label:"Payment Success (24h)",value:`${kpis.payment_success_24h}%`,     sub:`p95 latency ${kpis.payment_p95_latency}s`         },
+            ] : [
+              { label:"Total Accounts", value:"—", sub:"Loading..." },
+              { label:"Active Units",   value:"—", sub:"Loading..." },
+              { label:"Token Exposure (24h)", value:"—", sub:"Loading..." },
+              { label:"Payment Success (24h)",value:"—", sub:"Loading..." },
+            ]).map(k => (
               <div key={k.label} className="bg-white border border-[#E9EDEF] rounded-xl p-4">
                 <div className="text-[12px] text-[#667781] font-extrabold">{k.label}</div>
                 <div className="text-[26px] font-black text-[#111B21] mt-1 leading-tight">{k.value}</div>
@@ -124,9 +384,24 @@ export function TenantTowerPage() {
                   <div className="font-black text-[13px] text-[#111B21]">Service Hierarchy — Accounts</div>
                   <div className="text-[11px] text-[#667781] mt-0.5">Hard isolation: ON • Cross-tenant blocked (24h): 12</div>
                 </div>
-                <div className="flex gap-2">
-                  <Pill>Filter ▾</Pill>
-                  <Pill>Export</Pill>
+                <div className="flex gap-2 items-center relative">
+                  <div className="relative">
+                    <Pill onClick={() => setFilterOpen((v) => !v)}>Filter: {filterTier} ▾</Pill>
+                    {filterOpen && (
+                      <div className="absolute right-0 top-9 z-20 bg-white border border-[#E9EDEF] rounded-xl shadow-lg py-1 min-w-[120px]">
+                        {["ALL", "TOP", "DEAL", "CLIENT", "ORG"].map((tier) => (
+                          <button
+                            key={tier}
+                            onClick={() => { setFilterTier(tier); setFilterOpen(false); }}
+                            className={`w-full text-left px-4 py-2 text-[11px] font-black border-none cursor-pointer transition-colors ${
+                              filterTier === tier ? "bg-[#EAF7F3] text-[#128C7E]" : "bg-white text-[#111B21] hover:bg-[#F8FAFC]"
+                            }`}
+                          >{tier}</button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <Pill onClick={exportCsv}>Export</Pill>
                 </div>
               </div>
               <table className="w-full text-[12px] table-fixed">
@@ -136,14 +411,17 @@ export function TenantTowerPage() {
                   ))}
                 </tr></thead>
                 <tbody>
-                  {TENANTS.map(t => {
+                  {filteredTenants.length === 0 ? (
+                    <tr><td colSpan={7} className="px-3 py-6 text-center text-[12px] text-[#667781]">{tenants.length === 0 ? "Loading..." : "No tenants match filter"}</td></tr>
+                  ) : filteredTenants.map(t => {
                     const hb = healthBar(t.health);
+                    const isSelected = t.id === selectedId;
                     return (
-                      <tr key={t.name} className={`border-b border-[#E9EDEF] last:border-0 hover:bg-[#F8FAFC] cursor-pointer ${t.selected ? "bg-[#EAF7F3]" : ""}`}>
+                      <tr key={t.id} onClick={() => setSelectedId(t.id)} className={`border-b border-[#E9EDEF] last:border-0 hover:bg-[#F8FAFC] cursor-pointer ${isSelected ? "bg-[#EAF7F3]" : ""}`}>
                         <td className="px-3 py-2.5 font-black text-[#667781]">{t.tier}</td>
-                        <td className={`px-3 py-2.5 font-extrabold ${t.selected ? "text-[#128C7E]" : "text-[#111B21]"}`}>{t.name}</td>
-                        <td className="px-3 py-2.5 text-[#667781]">{t.ctry}</td>
-                        <td className="px-3 py-2.5 text-[#667781]">{t.ccy}</td>
+                        <td className={`px-3 py-2.5 font-extrabold ${isSelected ? "text-[#128C7E]" : "text-[#111B21]"}`}>{t.name}</td>
+                        <td className="px-3 py-2.5 text-[#667781]">{t.country}</td>
+                        <td className="px-3 py-2.5 text-[#667781]">{t.currency}</td>
                         <td className="px-3 py-2.5">
                           <div className="flex items-center gap-1.5">
                             <div className="flex-1 h-2.5 rounded-full bg-[#E9EDEF] overflow-hidden">
@@ -152,7 +430,7 @@ export function TenantTowerPage() {
                             <span className="text-[10px] text-[#667781] w-[26px] text-right">{t.health}</span>
                           </div>
                         </td>
-                        <td className="px-3 py-2.5 text-[#111B21]">{t.burn}</td>
+                        <td className="px-3 py-2.5 text-[#111B21]">{t.burn_rate}</td>
                         <td className="px-3 py-2.5">
                           <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${t.veba?okBg:"bg-[#E9EDEF] text-[#667781]"}`}>{t.veba?"ON":"OFF"}</span>
                         </td>
@@ -168,33 +446,46 @@ export function TenantTowerPage() {
               {/* Tenant header */}
               <div className="bg-white border border-[#E9EDEF] rounded-xl p-4">
                 <div className="text-[11px] text-[#667781] font-black">Selected Tenant</div>
-                <div className="font-black text-[16px] text-[#111B21] mt-1">Kampala_Boda_Fleet (ORG)</div>
-                <div className="flex gap-1.5 flex-wrap mt-1.5 text-[10px]">
-                  <span className="bg-[#F0F2F5] px-2 py-0.5 rounded-full text-[#667781]">UG • UGX • Timezone EA</span>
-                  <span className="bg-[#F0F2F5] px-2 py-0.5 rounded-full text-[#667781]">Parent: Kampala Dealer</span>
-                </div>
-                <div className="text-[11px] text-[#667781] mt-2">
-                  Policy: no cross-tenant share • Units: 2,140 • <span className={`font-black px-2 py-0.5 rounded-full ${alarmBg} text-[10px]`}>Health 88%</span>
-                </div>
+                {selectedTenant ? (
+                  <>
+                    <div className="font-black text-[16px] text-[#111B21] mt-1">{selectedTenant.name} ({selectedTenant.tier})</div>
+                    <div className="flex gap-1.5 flex-wrap mt-1.5 text-[10px]">
+                      <span className="bg-[#F0F2F5] px-2 py-0.5 rounded-full text-[#667781]">{selectedTenant.country} • {selectedTenant.currency} • {selectedTenant.timezone}</span>
+                      {selectedTenant.parent_name && <span className="bg-[#F0F2F5] px-2 py-0.5 rounded-full text-[#667781]">Parent: {selectedTenant.parent_name}</span>}
+                    </div>
+                    <div className="text-[11px] text-[#667781] mt-2">
+                      Policy: no cross-tenant share • Units: {selectedTenant.unit_count.toLocaleString()} • <span className={`font-black px-2 py-0.5 rounded-full ${selectedTenant.health < 90 ? alarmBg : okBg} text-[10px]`}>Health {selectedTenant.health}%</span>
+                    </div>
+                  </>
+                ) : (
+                  <div className="text-[12px] text-[#667781] mt-2">Click a tenant row to view details</div>
+                )}
               </div>
 
               {/* Token Wallet (FIFO) */}
               <div className="bg-white border border-[#E9EDEF] rounded-xl p-4">
                 <div className="font-black text-[13px] text-[#111B21]">Token Wallet (FIFO)</div>
-                <div className="font-black text-[20px] text-[#111B21] mt-1">Balance: 2,140,500</div>
-                <div className="text-[11px] text-[#667781] mt-0.5">Burn: 8.6 tokens/s • Run-out: ~69h</div>
-                <div className="h-3 rounded-full bg-[#E9EDEF] mt-2 overflow-hidden">
-                  <div className="h-full rounded-full bg-[#128C7E]" style={{width:"58%"}} />
-                </div>
-                <div className="text-[10px] text-[#667781] mt-1.5">Top drains: Video(42%) • AI(21%) • Maps(11%)</div>
+                {wallet ? (
+                  <>
+                    <div className="font-black text-[20px] text-[#111B21] mt-1">Balance: {wallet.balance.toLocaleString()}</div>
+                    <div className="text-[11px] text-[#667781] mt-0.5">Burn: {wallet.burn_rate} tokens/s • Run-out: ~{wallet.runout_hours}h</div>
+                    <div className="h-3 rounded-full bg-[#E9EDEF] mt-2 overflow-hidden">
+                      <div className="h-full rounded-full bg-[#128C7E]" style={{width:`${wallet.capacity_pct}%`}} />
+                    </div>
+                    <div className="text-[10px] text-[#667781] mt-1.5">Top drains: {wallet.top_drains.map(d => `${d.name}(${d.pct}%)`).join(" • ")}</div>
+                  </>
+                ) : (
+                  <div className="text-[12px] text-[#667781] mt-2">{selectedTenant ? "Loading wallet..." : "Select a tenant"}</div>
+                )}
                 <div className="flex gap-2 mt-2">
-                  <Pill>Top-Up</Pill><Pill>Allocate</Pill>
-                  <span className={`h-7 px-3 rounded-full text-[11px] font-black inline-flex items-center ${alarmBg} cursor-pointer`}>Mint (HIC)</span>
+                  <Pill onClick={() => setTopUpOpen(true)}>Top-Up</Pill>
+                  <Pill onClick={() => setAllocateOpen(true)}>Allocate</Pill>
+                  <span onClick={() => setMintOpen(true)} className={`h-7 px-3 rounded-full text-[11px] font-black inline-flex items-center ${alarmBg} cursor-pointer`}>Mint (HIC)</span>
                 </div>
               </div>
 
               {/* Payments & Gateways */}
-              <div className="bg-white border border-[#E9EDEF] rounded-xl p-4">
+              {/* <div className="bg-white border border-[#E9EDEF] rounded-xl p-4">
                 <div className="font-black text-[13px] text-[#111B21]">Payments &amp; Gateways</div>
                 <div className="font-black text-[11px] text-[#111B21] mt-2">Mobile Money</div>
                 <div className="flex flex-col gap-1.5 mt-1.5">
@@ -216,7 +507,7 @@ export function TenantTowerPage() {
                   <span>Pesapal • DPO • Flutterwave • Visa/Mast…</span>
                   <Pill>Retry webhooks</Pill>
                 </div>
-              </div>
+              </div> */}
 
               {/* VEBA + Waswa AI */}
               <div className="bg-white border border-[#E9EDEF] rounded-xl p-4">
@@ -237,7 +528,7 @@ export function TenantTowerPage() {
                 <div className="font-black text-[13px] text-[#111B21]">Usage Events Ledger (US-03)</div>
                 <div className="text-[11px] text-[#667781] mt-0.5">Kafka topic: usage_events • immutable • idempotent</div>
               </div>
-              <Pill>Download CSV</Pill>
+              <Pill onClick={exportUsageCsv}>Download CSV</Pill>
             </div>
             <table className="w-full text-[12px] table-fixed">
               <thead><tr className="bg-[#F8FAFC] border-b border-[#E9EDEF]">
@@ -246,15 +537,17 @@ export function TenantTowerPage() {
                 ))}
               </tr></thead>
               <tbody>
-                {USAGE.map((u, i) => (
-                  <tr key={i} className="border-b border-[#E9EDEF] last:border-0 hover:bg-[#F8FAFC]">
+                {usageEvents.length === 0 ? (
+                  <tr><td colSpan={7} className="px-3 py-6 text-center text-[12px] text-[#667781]">Loading…</td></tr>
+                ) : usageEvents.map((u) => (
+                  <tr key={u.id} className="border-b border-[#E9EDEF] last:border-0 hover:bg-[#F8FAFC]">
                     <td className="px-3 py-2.5 text-[#667781]">{u.topic}</td>
                     <td className="px-3 py-2.5 font-extrabold text-[#111B21]">{u.type}</td>
                     <td className="px-3 py-2.5 text-[#111B21] truncate">{u.tenant}</td>
                     <td className="px-3 py-2.5 text-[#667781]">{u.action}</td>
-                    <td className={`px-3 py-2.5 font-black ${parseFloat(u.tokens) > 1 ? "text-[#F97316]" : "text-[#667781]"}`}>{u.tokens}</td>
+                    <td className={`px-3 py-2.5 font-black ${u.tokens > 1 ? "text-[#F97316]" : "text-[#667781]"}`}>{u.tokens.toFixed(1)}</td>
                     <td className="px-3 py-2.5 text-[#667781]">{u.cost}</td>
-                    <td className="px-3 py-2.5 text-[#667781]">{u.guard}</td>
+                    <td className="px-3 py-2.5 text-[#667781]">{u.guardrail}</td>
                   </tr>
                 ))}
               </tbody>
@@ -264,23 +557,64 @@ export function TenantTowerPage() {
           {/* ── Approvals Queue ───────────────────────────────────────────────── */}
           <div className="bg-white border border-[#E9EDEF] rounded-xl overflow-hidden">
             <div className="flex items-center justify-between px-4 py-3 border-b border-[#E9EDEF]">
-              <div>
-                <div className="font-black text-[13px] text-[#111B21]">Approvals Queue (HITL/HIC)</div>
-                <div className="text-[11px] text-[#667781] mt-0.5">High-risk actions require approval + audit trail</div>
+              <div className="flex items-center gap-2">
+                <div>
+                  <div className="font-black text-[13px] text-[#111B21]">Approvals Queue (HITL/HIC)</div>
+                  <div className="text-[11px] text-[#667781] mt-0.5">High-risk actions require approval + audit trail</div>
+                </div>
+                {approvals.filter((a) => a.status === "pending").length > 0 && (
+                  <span className={`text-[10px] font-black px-2 py-0.5 rounded-full ${alarmBg}`}>
+                    {approvals.filter((a) => a.status === "pending").length} pending
+                  </span>
+                )}
               </div>
-              <Pill>Open AI assist</Pill>
+              <Pill onClick={refreshApprovals}>{approvalsLoading ? "Refreshing…" : "Refresh"}</Pill>
             </div>
             <div className="flex flex-col">
-              {APPROVALS.map((a, i) => (
-                <div key={i} className="flex items-center gap-4 px-4 py-3.5 border-b border-[#E9EDEF] last:border-0">
-                  <span className="text-[16px]">☐</span>
+              {approvalsLoading ? (
+                <div className="px-4 py-6 text-center text-[12px] text-[#667781]">Loading approvals…</div>
+              ) : approvals.length === 0 ? (
+                <div className="px-4 py-6 text-center text-[12px] text-[#667781]">No approval requests</div>
+              ) : approvals.map((a) => (
+                <div key={a.id} className="flex items-center gap-3 px-4 py-3.5 border-b border-[#E9EDEF] last:border-0">
+                  <span className="text-[16px]">{a.status === "pending" ? "☐" : a.status === "approved" ? "✅" : "❌"}</span>
+                  {/* Type badge */}
+                  <span className={`text-[9px] font-black px-2 py-0.5 rounded-full shrink-0 uppercase ${
+                    a.type === "mint" ? "bg-[#DBEAFE] text-[#1E40AF]"
+                      : a.type === "tenant_onboarding" ? "bg-[#F3E8FF] text-[#7C3AED]"
+                      : a.type === "hic" ? "bg-[#FEE2E2] text-[#991B1B]"
+                      : "bg-[#FEF3C7] text-[#92400E]"
+                  }`}>
+                    {a.type === "tenant_onboarding" ? "ONBOARD" : a.type === "mint" ? "MINT" : a.type.toUpperCase()}
+                  </span>
                   <div className="flex-1 min-w-0">
                     <div className="font-extrabold text-[12px] text-[#111B21]">{a.title}</div>
-                    <div className="text-[11px] text-[#667781] mt-0.5">{a.tenant} • {a.meta}</div>
+                    <div className="text-[11px] text-[#667781] mt-0.5">
+                      {a.tenant_name} • {a.requested_by}
+                      {a.requested_at && <span className="ml-1 text-[10px] font-mono">{new Date(a.requested_at).toLocaleString("en-GB", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit", hour12: false })}</span>}
+                    </div>
                   </div>
                   <span className={`text-[11px] font-black px-3 py-1 rounded-full whitespace-nowrap ${
-                    a.req.includes("HIC") ? critBg : alarmBg
-                  }`}>{a.req}</span>
+                    a.requirement.includes("HIC") ? critBg : alarmBg
+                  }`}>{a.requirement}</span>
+                  {a.status === "pending" ? (
+                    <div className="flex gap-1.5 shrink-0">
+                      <button
+                        disabled={actioningId === a.id}
+                        onClick={() => handleApprove(a.id)}
+                        className={`h-7 px-3 rounded-full text-[11px] font-black border-none cursor-pointer transition-all ${okBg} hover:brightness-105 disabled:opacity-50`}
+                      >{actioningId === a.id ? "…" : "Approve"}</button>
+                      <button
+                        disabled={actioningId === a.id}
+                        onClick={() => handleReject(a.id)}
+                        className={`h-7 px-3 rounded-full text-[11px] font-black border-none cursor-pointer transition-all ${critBg} hover:brightness-105 disabled:opacity-50`}
+                      >{actioningId === a.id ? "…" : "Reject"}</button>
+                    </div>
+                  ) : (
+                    <span className={`text-[11px] font-black px-3 py-1 rounded-full whitespace-nowrap ${
+                      a.status === "approved" ? okBg : "bg-[#E9EDEF] text-[#667781]"
+                    }`}>{a.status}</span>
+                  )}
                 </div>
               ))}
             </div>
@@ -295,19 +629,22 @@ export function TenantTowerPage() {
               <div className="text-[11px] text-[#667781] mt-0.5">Hash-chained events • retention tied to plan</div>
             </div>
             <div className="flex flex-col">
-              {AUDIT_TRAIL.map((a, i) => (
-                <div key={i} className="flex items-center gap-3 px-4 py-3 border-b border-[#E9EDEF] last:border-0">
+              {auditTrail.length === 0 ? (
+                <div className="px-4 py-6 text-center text-[12px] text-[#667781]">Loading…</div>
+              ) : auditTrail.map((a) => (
+                <div key={a.id} className="flex items-center gap-3 px-4 py-3 border-b border-[#E9EDEF] last:border-0">
                   <span className="text-[14px] text-[#667781]">☐</span>
-                  <span className="text-[12px] font-mono text-[#667781] w-[60px] shrink-0">{a.ts}</span>
-                  <span className={`text-[11px] font-black ${a.tagCls} w-[40px] shrink-0`}>{a.tag}</span>
+                  <span className="text-[12px] font-mono text-[#667781] w-[60px] shrink-0">{a.timestamp ? new Date(a.timestamp).toLocaleTimeString("en-GB", { hour12: false }) : "—"}</span>
+                  <span className="text-[11px] font-black text-[#128C7E] w-[40px] shrink-0">{a.tag}</span>
                   <span className="text-[12px] text-[#111B21] flex-1">{a.title}</span>
-                  <span className="text-[11px] text-[#667781] font-mono">{a.who}</span>
+                  <span className="text-[11px] text-[#667781] font-mono">{a.actor}</span>
+                  <span className="text-[10px] text-[#9CA3AF] font-mono" title={`prev: ${a.hash_prev}\nthis: ${a.hash_this}`}>#{a.hash_this.slice(0, 8)}</span>
                 </div>
               ))}
             </div>
           </div>
 
-          {/* ── Policy Violations & Opportunities ────────────────────────────── */}
+          {/* ── Policy Violations & Opportunities ──────────────────────────────
           <div className="bg-white border border-[#E9EDEF] rounded-xl overflow-hidden">
             <div className="px-4 py-3 border-b border-[#E9EDEF]">
               <div className="font-black text-[13px] text-[#111B21]">Policy Violations &amp; Opportunities</div>
@@ -322,17 +659,42 @@ export function TenantTowerPage() {
                 </div>
               ))}
             </div>
-          </div>
+          </div> */}
 
           {/* ── Odoo ERP Sync ─────────────────────────────────────────────────── */}
-          <div className="bg-white border border-[#E9EDEF] rounded-xl px-4 py-3 flex items-center gap-4">
+          {/* <div className="bg-white border border-[#E9EDEF] rounded-xl px-4 py-3 flex items-center gap-4">
             <div className="font-black text-[13px] text-[#111B21]">Odoo ERP Sync</div>
             <div className="text-[11px] text-[#667781]">Invoices batch: 02:00 • Last sync: 10:12 • Failures: 0 • Webhook: /odoo/invoice</div>
             <span className={`text-[10px] font-black px-3 py-1 rounded-full ml-auto ${okBg}`}>Status: OK</span>
-          </div>
+          </div> */}
 
         </div>
       </main>
+
+      {/* ── Modals ────────────────────────────────────────────────────────── */}
+      <TrashRestoreModal open={trashOpen} onClose={() => setTrashOpen(false)} />
+      <ImportTenantsModal open={importOpen} onClose={() => setImportOpen(false)} />
+      <CreateSubOrgModal open={subOrgOpen} onClose={() => setSubOrgOpen(false)} />
+      <TopUpModal
+        open={topUpOpen}
+        onClose={() => setTopUpOpen(false)}
+        tenantId={selectedId}
+        tenantName={selectedTenant?.name ?? ""}
+        onSuccess={refreshWallet}
+      />
+      <AllocateModal
+        open={allocateOpen}
+        onClose={() => setAllocateOpen(false)}
+        fromTenantId={selectedId}
+        fromTenantName={selectedTenant?.name ?? ""}
+        onSuccess={refreshWallet}
+      />
+      <MintModal
+        open={mintOpen}
+        onClose={() => setMintOpen(false)}
+        tenantId={selectedId}
+        tenantName={selectedTenant?.name ?? ""}
+      />
 
       {/* ── Right Blade: Create Tenant / Sub-Org ──────────────────────────── */}
       {bladeOpen && (
@@ -367,12 +729,43 @@ export function TenantTowerPage() {
               <>
                 <BladeSection title="Basics" sub="Hierarchy rules: Top cannot create units • dealer accounts should not host units">
                   <div className="grid grid-cols-2 gap-3 p-4">
-                    <FormField label="Tenant name" value="Kampala_Boda_Fleet" />
-                    <FormField label="Type" value="ORG ▾" />
-                    <FormField label="Parent account" value="Kampala Dealer Rights ▾" />
-                    <FormField label="Country" value="UG ▾" />
-                    <FormField label="Currency" value="UGX ▾" />
-                    <FormField label="Timezone" value="Africa/Kampala ▾" />
+                    <FormField label="Tenant name" value={bladeName} onChange={setBladeName} placeholder="e.g. Kampala_Boda_Fleet" />
+                    <SelectField label="Type" value={bladeTier} onChange={(v) => setBladeTier(v as TenantTier)} options={[
+                      { value: "TOP", label: "TOP — Top-level" },
+                      { value: "DEAL", label: "DEAL — Dealer" },
+                      { value: "CLIENT", label: "CLIENT — Client" },
+                      { value: "ORG", label: "ORG — Organisation" },
+                    ]} />
+                    <SelectField label="Parent account" value={bladeParent ?? ""} onChange={(v) => setBladeParent(v || null)} options={[
+                      { value: "", label: "— None (root) —" },
+                      ...tenants.map((t) => ({ value: t.id, label: `${t.name} (${t.tier})` })),
+                    ]} />
+                    <SelectField label="Country" value={bladeCountry} onChange={setBladeCountry} options={[
+                      { value: "UG", label: "UG — Uganda" },
+                      { value: "KE", label: "KE — Kenya" },
+                      { value: "TZ", label: "TZ — Tanzania" },
+                      { value: "RW", label: "RW — Rwanda" },
+                      { value: "NG", label: "NG — Nigeria" },
+                      { value: "GH", label: "GH — Ghana" },
+                      { value: "ZA", label: "ZA — South Africa" },
+                    ]} />
+                    <SelectField label="Currency" value={bladeCurrency} onChange={setBladeCurrency} options={[
+                      { value: "UGX", label: "UGX" },
+                      { value: "KES", label: "KES" },
+                      { value: "TZS", label: "TZS" },
+                      { value: "RWF", label: "RWF" },
+                      { value: "USD", label: "USD" },
+                      { value: "EUR", label: "EUR" },
+                      { value: "NGN", label: "NGN" },
+                    ]} />
+                    <SelectField label="Timezone" value={bladeTimezone} onChange={setBladeTimezone} options={[
+                      { value: "Africa/Kampala", label: "Africa/Kampala" },
+                      { value: "Africa/Nairobi", label: "Africa/Nairobi" },
+                      { value: "Africa/Dar_es_Salaam", label: "Africa/Dar_es_Salaam" },
+                      { value: "Africa/Kigali", label: "Africa/Kigali" },
+                      { value: "Africa/Lagos", label: "Africa/Lagos" },
+                      { value: "Africa/Johannesburg", label: "Africa/Johannesburg" },
+                    ]} />
                   </div>
                 </BladeSection>
               </>
@@ -386,25 +779,30 @@ export function TenantTowerPage() {
                       {/* Plan & Entitlements */}
                       <div>
                         <div className="font-black text-[12px] text-[#111B21] mb-2">Plan &amp; Entitlements</div>
-                        <FormField label="Billing plan" value="OLIWA-PLUS ▾" />
-                        <FormField label="History retention" value="90 days" />
-                        <FormField label="Daily token cap" value="300,000 tokens/day" />
+                        <SelectField label="Billing plan" value={bladePlan} onChange={setBladePlan} options={[
+                          { value: "OLIWA-BASIC", label: "OLIWA-BASIC" },
+                          { value: "OLIWA-PLUS", label: "OLIWA-PLUS" },
+                          { value: "OLIWA-PRO", label: "OLIWA-PRO" },
+                          { value: "ENTERPRISE", label: "ENTERPRISE" },
+                        ]} />
+                        <SelectField label="History retention" value={bladeRetention} onChange={setBladeRetention} options={[
+                          { value: "30", label: "30 days" },
+                          { value: "60", label: "60 days" },
+                          { value: "90", label: "90 days" },
+                          { value: "180", label: "180 days" },
+                          { value: "365", label: "365 days" },
+                        ]} />
+                        <FormField label="Daily token cap" value={bladeDailyCap} onChange={setBladeDailyCap} placeholder="e.g. 300000" />
                         <div className="text-[10px] text-[#667781] mt-1">Soft alert at 80% (configurable)</div>
                         <div className="text-[10px] text-[#667781] mt-1">Multi-currency: UGX/KES/USD/EUR/RWF/TZS</div>
                       </div>
                       {/* Top-Up Channels */}
                       <div>
                         <div className="font-black text-[12px] text-[#111B21] mb-2">Top-Up Channels</div>
-                        {[
-                          { n:"M-Pesa",       on:true  },
-                          { n:"MTN MoMo",     on:true  },
-                          { n:"Airtel Money",  on:true  },
-                          { n:"Pesapal Cards", on:true  },
-                          { n:"Flutterwave",   on:false },
-                        ].map(c => (
-                          <div key={c.n} className="flex items-center justify-between py-1.5">
-                            <span className="text-[12px] text-[#111B21]">{c.n}</span>
-                            <Toggle on={c.on} />
+                        {Object.entries(bladeChannels).map(([name, on]) => (
+                          <div key={name} className="flex items-center justify-between py-1.5">
+                            <span className="text-[12px] text-[#111B21]">{name}</span>
+                            <Toggle on={on} onToggle={() => setBladeChannels(prev => ({ ...prev, [name]: !prev[name] }))} />
                           </div>
                         ))}
                       </div>
@@ -417,18 +815,10 @@ export function TenantTowerPage() {
             {bladeTab === "Modules" && (
               <BladeSection title="Modules & Add-Ons" sub="Enable/disable modules per tenant (RBAC-gated)">
                 <div className="p-4 grid grid-cols-2 gap-3">
-                  {[
-                    { n:"OLIWA Tracking",        on:true  },
-                    { n:"PIKI (Motorcycle)",      on:false },
-                    { n:"VEBA Marketplace",       on:true  },
-                    { n:"AI Console (Waswa)",     on:true  },
-                    { n:"Messaging Portal (WhatsApp/SMS)", on:true },
-                    { n:"Video Telematics",       on:false },
-                    { n:"Fuel & Sensors",         on:true  },
-                  ].map(m => (
-                    <div key={m.n} className="flex items-center justify-between">
-                      <span className="text-[12px] text-[#111B21]">{m.n}</span>
-                      <Toggle on={m.on} />
+                  {Object.entries(bladeModules).map(([name, on]) => (
+                    <div key={name} className="flex items-center justify-between">
+                      <span className="text-[12px] text-[#111B21]">{name}</span>
+                      <Toggle on={on} onToggle={() => setBladeModules(prev => ({ ...prev, [name]: !prev[name] }))} />
                     </div>
                   ))}
                 </div>
@@ -436,9 +826,27 @@ export function TenantTowerPage() {
             )}
 
             {bladeTab === "RBAC" && (
-              <BladeSection title="RBAC Roles" sub="Assign roles from templates or create custom">
-                <div className="p-4 text-[12px] text-[#667781]">
-                  Role templates: System Admin, Fleet Manager, Finance, Read-Only Observer, VEBA Ops, Driver (mobile-only). Custom roles require HITL approval.
+              <BladeSection title="RBAC Roles" sub="Assign roles from templates or create custom • Custom roles require HITL approval">
+                <div className="p-4">
+                  <div className="text-[10px] text-[#667781] mb-3">Select initial role templates for this tenant. Roles can be customised later.</div>
+                  <div className="space-y-2">
+                    {Object.entries(bladeRoles).map(([role, on]) => (
+                      <div key={role} className="flex items-center justify-between py-1.5 px-2 rounded-lg hover:bg-[#F8FAFC]">
+                        <div>
+                          <span className="text-[12px] font-black text-[#111B21]">{role}</span>
+                          <span className="text-[10px] text-[#667781] ml-2">
+                            {role === "System Admin" && "Full access, all modules"}
+                            {role === "Fleet Manager" && "OLIWA + PIKI + Fuel"}
+                            {role === "Finance" && "Billing, wallet, reports"}
+                            {role === "Read-Only Observer" && "View-only, no actions"}
+                            {role === "VEBA Ops" && "Marketplace + AI console"}
+                            {role === "Driver (mobile-only)" && "Mobile app, limited scope"}
+                          </span>
+                        </div>
+                        <Toggle on={on} onToggle={() => setBladeRoles(prev => ({ ...prev, [role]: !prev[role] }))} />
+                      </div>
+                    ))}
+                  </div>
                 </div>
               </BladeSection>
             )}
@@ -464,11 +872,83 @@ export function TenantTowerPage() {
                   </div>
                 </BladeSection>
 
+                {/* Result feedback */}
+                {bladeResult && (
+                  <div className={`mx-4 mb-2 px-3 py-2 rounded-lg text-[11px] font-black ${bladeResult.ok ? "bg-[#D1FAE5] text-[#065F46]" : "bg-[#FEE2E2] text-[#991B1B]"}`}>
+                    {bladeResult.msg}
+                  </div>
+                )}
+
+                {/* Summary of what will be created */}
+                <BladeSection title="Summary" sub="Review the tenant details before submitting">
+                  <div className="p-4 text-[12px] text-[#111B21] space-y-1.5">
+                    <div className="font-black text-[11px] text-[#128C7E] mb-1">Basics</div>
+                    <div><span className="text-[#667781] w-24 inline-block">Name:</span> <span className="font-black">{bladeName || "—"}</span></div>
+                    <div><span className="text-[#667781] w-24 inline-block">Tier:</span> <span className="font-black">{bladeTier}</span></div>
+                    <div><span className="text-[#667781] w-24 inline-block">Parent:</span> <span className="font-black">{bladeParent ? tenants.find(t => t.id === bladeParent)?.name ?? bladeParent : "None (root)"}</span></div>
+                    <div><span className="text-[#667781] w-24 inline-block">Country:</span> <span className="font-black">{bladeCountry}</span></div>
+                    <div><span className="text-[#667781] w-24 inline-block">Currency:</span> <span className="font-black">{bladeCurrency}</span></div>
+                    <div><span className="text-[#667781] w-24 inline-block">Timezone:</span> <span className="font-black">{bladeTimezone}</span></div>
+
+                    <div className="font-black text-[11px] text-[#128C7E] mt-3 mb-1">Billing & Tokens</div>
+                    <div><span className="text-[#667781] w-24 inline-block">Plan:</span> <span className="font-black">{bladePlan}</span></div>
+                    <div><span className="text-[#667781] w-24 inline-block">Retention:</span> <span className="font-black">{bladeRetention} days</span></div>
+                    <div><span className="text-[#667781] w-24 inline-block">Daily cap:</span> <span className="font-black">{parseInt(bladeDailyCap, 10).toLocaleString()} tokens/day</span></div>
+                    <div><span className="text-[#667781] w-24 inline-block">Channels:</span> <span className="font-black">{Object.entries(bladeChannels).filter(([,v]) => v).map(([k]) => k).join(", ") || "None"}</span></div>
+
+                    <div className="font-black text-[11px] text-[#128C7E] mt-3 mb-1">Modules</div>
+                    <div><span className="text-[#667781] w-24 inline-block">Enabled:</span> <span className="font-black">{Object.entries(bladeModules).filter(([,v]) => v).map(([k]) => k).join(", ") || "None"}</span></div>
+
+                    <div className="font-black text-[11px] text-[#128C7E] mt-3 mb-1">RBAC Roles</div>
+                    <div><span className="text-[#667781] w-24 inline-block">Assigned:</span> <span className="font-black">{Object.entries(bladeRoles).filter(([,v]) => v).map(([k]) => k).join(", ") || "None"}</span></div>
+                  </div>
+                </BladeSection>
+
+                {/* Draft / Approval status indicator */}
+                {bladeDraftId && (
+                  <div className="mx-0 mb-2 px-3 py-2 rounded-lg text-[11px] font-black bg-[#F0F2F5] text-[#667781] flex items-center gap-2">
+                    <span>Draft: {bladeDraftId}</span>
+                    <span className={`px-2 py-0.5 rounded-full text-[10px] ${
+                      bladeApprovalStatus === "approved" ? okBg
+                        : bladeApprovalStatus === "pending_approval" ? alarmBg
+                        : "bg-[#E9EDEF] text-[#667781]"
+                    }`}>
+                      {bladeApprovalStatus === "approved" ? "APPROVED" : bladeApprovalStatus === "pending_approval" ? "PENDING APPROVAL" : "DRAFT"}
+                    </span>
+                  </div>
+                )}
+
                 {/* Action buttons */}
                 <div className="flex gap-2 mt-3">
-                  <Pill>Save Draft</Pill>
-                  <span className={`h-7 px-3 rounded-full text-[11px] font-black inline-flex items-center ${okBg} cursor-pointer`}>Request HITL Approval</span>
-                  <span className={`h-7 px-3 rounded-full text-[11px] font-black inline-flex items-center ${critBg} cursor-pointer`}>Submit (after approval)</span>
+                  <button
+                    onClick={handleSaveDraft}
+                    disabled={bladeSubmitting || !bladeName.trim()}
+                    className={`h-7 px-3 rounded-full text-[11px] font-black border-none cursor-pointer hover:brightness-105 active:opacity-85 transition-all whitespace-nowrap ${
+                      bladeSubmitting || !bladeName.trim() ? "bg-[#D1D5DB] text-[#9CA3AF] cursor-not-allowed" : "bg-white border border-[#E9EDEF] text-[#667781]"
+                    }`}
+                  >
+                    {bladeSubmitting && !bladeApprovalStatus ? "Saving…" : bladeDraftId ? "Update Draft" : "Save Draft"}
+                  </button>
+                  <button
+                    onClick={handleRequestApproval}
+                    disabled={bladeSubmitting || !bladeName.trim() || bladeApprovalStatus === "pending_approval" || bladeApprovalStatus === "approved"}
+                    className={`h-7 px-3 rounded-full text-[11px] font-black border-none cursor-pointer transition-all whitespace-nowrap ${
+                      bladeSubmitting || !bladeName.trim() || bladeApprovalStatus === "pending_approval" || bladeApprovalStatus === "approved"
+                        ? "bg-[#D1D5DB] text-[#9CA3AF] cursor-not-allowed"
+                        : `${okBg} hover:brightness-110`
+                    }`}
+                  >
+                    {bladeApprovalStatus === "pending_approval" ? "Awaiting Admin…" : bladeApprovalStatus === "approved" ? "Approved ✓" : "Request HITL Approval"}
+                  </button>
+                  <button
+                    onClick={handleBladeSubmit}
+                    disabled={bladeSubmitting || bladeApprovalStatus !== "approved"}
+                    className={`h-7 px-3 rounded-full text-[11px] font-black inline-flex items-center border-none cursor-pointer transition-all ${
+                      bladeSubmitting || bladeApprovalStatus !== "approved" ? "bg-[#D1D5DB] text-[#9CA3AF] cursor-not-allowed" : `${critBg} hover:brightness-110`
+                    }`}
+                  >
+                    {bladeSubmitting && bladeApprovalStatus === "approved" ? "Creating…" : "Submit (after approval)"}
+                  </button>
                 </div>
 
                 {/* Audit Proof */}
@@ -520,18 +1000,42 @@ function BladeSection({ title, sub, children }: { title: string; sub?: string; c
   );
 }
 
-function FormField({ label, value }: { label: string; value: string }) {
+function FormField({ label, value, onChange, placeholder }: { label: string; value: string; onChange?: (v: string) => void; placeholder?: string }) {
   return (
     <div className="mb-2">
       <div className="text-[10px] font-black text-[#667781] mb-1">{label}</div>
-      <input defaultValue={value} className="w-full h-9 rounded-lg border border-[#E9EDEF] bg-[#F8FAFC] px-3 text-[12px] font-black text-[#111B21] outline-none focus:border-[#128C7E] transition-colors" />
+      <input
+        value={value}
+        onChange={onChange ? (e) => onChange(e.target.value) : undefined}
+        readOnly={!onChange}
+        placeholder={placeholder}
+        className="w-full h-9 rounded-lg border border-[#E9EDEF] bg-[#F8FAFC] px-3 text-[12px] font-black text-[#111B21] outline-none focus:border-[#128C7E] transition-colors"
+      />
     </div>
   );
 }
 
-function Toggle({ on }: { on: boolean }) {
+function SelectField({ label, value, onChange, options }: { label: string; value: string; onChange: (v: string) => void; options: { value: string; label: string }[] }) {
   return (
-    <div className={`w-10 h-5 rounded-full relative cursor-pointer transition-colors ${on ? "bg-[#128C7E]" : "bg-[#D1D5DB]"}`}>
+    <div className="mb-2">
+      <div className="text-[10px] font-black text-[#667781] mb-1">{label}</div>
+      <select
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="w-full h-9 rounded-lg border border-[#E9EDEF] bg-[#F8FAFC] px-3 text-[12px] font-black text-[#111B21] outline-none focus:border-[#128C7E] transition-colors appearance-none cursor-pointer"
+      >
+        {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+      </select>
+    </div>
+  );
+}
+
+function Toggle({ on, onToggle }: { on: boolean; onToggle?: () => void }) {
+  return (
+    <div
+      onClick={onToggle}
+      className={`w-10 h-5 rounded-full relative cursor-pointer transition-colors ${on ? "bg-[#128C7E]" : "bg-[#D1D5DB]"}`}
+    >
       <div className={`w-4 h-4 rounded-full bg-white absolute top-0.5 transition-all shadow-sm ${on ? "left-[22px]" : "left-0.5"}`} />
     </div>
   );

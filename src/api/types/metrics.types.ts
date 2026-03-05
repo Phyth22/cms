@@ -69,6 +69,14 @@ export interface ApiPerformanceMetrics {
   };
 }
 
+export interface GunicornWorker {
+  cpu_percent: number;
+  mem_percent: number;
+  pid: number;
+  rss_MB: number;
+  status: string;
+}
+
 export interface ServerMetrics {
   disk_io: {
     devices: Record<string, DiskDevice>;
@@ -78,6 +86,7 @@ export interface ServerMetrics {
   processes: {
     supervisor: Record<string, SupervisorProcess>;
     systemd: Record<string, SystemdService>;
+    gunicorn?: Record<string, GunicornWorker>;
   };
   system: {
     cpu_percent: number;
