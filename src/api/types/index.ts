@@ -14,6 +14,7 @@ export type {
   DiskDevice,
   SupervisorProcess,
   SystemdService,
+  GunicornWorker,
   ServerMetrics,
 } from "./metrics.types";
 
@@ -27,3 +28,33 @@ export type {
 } from "./gateways.types";
 
 export type { VebaStatistics } from "./veba.types";
+
+export type {
+  TenantTier,
+  TenantStatus,
+  Tenant,
+  CreateTenantRequest,
+  CreateTenantResponse,
+  ImportTenantsResponse,
+  TrashedTenant,
+  TrashTenantResponse,
+  RestoreTenantResponse,
+  TenantListItem,
+  TenantKpis,
+  TokenDrain,
+  TenantWallet,
+  TopUpRequest,
+  TopUpResponse,
+  AllocateRequest,
+  AllocateResponse,
+  MintRequest,
+  MintResponse,
+  Approval,
+  ApprovalActionResponse,
+  UsageEvent,
+  AuditTrailEntry,
+  SaveDraftRequest,
+  SaveDraftResponse,
+  RequestApprovalResponse,
+  SubmitDraftResponse,
+} from "./tenants.types";

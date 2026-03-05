@@ -209,8 +209,8 @@ export function Dashboard() {
             {/* VEBA */}
             <Card title="VEBA Governance • Leakage Prevention" subtitle={vebaLoading ? "Loading…" : "Listings + tendering"}>
               <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                <MiniStat label="Bookings today"   value={vebaLoading || !veba || !veba.bookings_today ? "—" : veba.bookings_today.toLocaleString()} />
-                <MiniStat label="Leakage attempts" value={vebaLoading || !veba || !veba.leakage_attempts ? "—" : veba.leakage_attempts.toLocaleString()} />
+                <MiniStat label="Bookings today"   value={vebaLoading || !veba || veba.bookings_today == null ? "—" : veba.bookings_today.toLocaleString()} />
+                <MiniStat label="Leakage attempts" value={vebaLoading || !veba || veba.leakage_attempts == null ? "—" : veba.leakage_attempts.toLocaleString()} />
                 <MiniStat label="Settlement p95"   value={vebaLoading || !veba || !veba.settlement_p95 ? "—" : veba.settlement_p95} />
               </div>
 
