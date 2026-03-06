@@ -65,6 +65,7 @@ export type {
 
 // ── Domain services ──────────────────────────────────────────────────────────
 
+export { isUserLoggedIn, getAccountUid, startSessionMonitor, stopSessionMonitor } from "./services/auth.service";
 export { createSimCard, getAllSimCards } from "./services/simcards.service";
 export { getSimStatistics } from "./services/statistics.service";
 export { getServerMetrics, getApiPerformance } from "./services/metrics.service";

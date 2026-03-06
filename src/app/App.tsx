@@ -5,6 +5,7 @@
  * component via a barrel export in features/<name>/index.ts.
  */
 import { Routes, Route } from "react-router-dom";
+import { useSessionMonitor } from "../hooks/useSessionMonitor";
 
 // ── Shared layout components ─────────────────────────────────────────────────
 import { TopBar }      from "../components/navigation";
@@ -44,6 +45,8 @@ import { NotFoundPage } from "./NotFoundPage";
 
 
 export default function App() {
+  useSessionMonitor();
+
   return (
     <AuthProvider>
     <div className="h-dvh flex flex-col bg-[#F0F2F5] overflow-hidden w-full">
